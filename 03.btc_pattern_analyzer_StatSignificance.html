@@ -1,0 +1,2128 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Pattern Analyzer — Analisi Statistica Sequenze</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #06090f;
+  --bg-1: #0b1018;
+  --bg-2: #111923;
+  --bg-3: #18222f;
+  --bg-4: #1f2b3a;
+  --border: #1e2d40;
+  --border-light: #2a3d55;
+  --text-0: #e8ecf1;
+  --text-1: #b0bec9;
+  --text-2: #7a8d9e;
+  --accent: #00e4b8;
+  --accent-dim: #00a88580;
+  --accent-bg: #00e4b812;
+  --red: #ff4f6a;
+  --red-dim: #ff4f6a60;
+  --red-bg: #ff4f6a10;
+  --yellow: #ffc857;
+  --yellow-dim: #ffc85760;
+  --green-cell: #00e4b830;
+  --red-cell: #ff4f6a25;
+  --yellow-cell: #ffc85720;
+  --neutral-cell: #ffffff08;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+/* NOISE OVERLAY */
+body::before {
+  content:''; position:fixed; inset:0; z-index:9999; pointer-events:none;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+/* HEADER */
+.header {
+  border-bottom: 1px solid var(--border);
+  padding: 20px 28px 16px;
+  display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap;
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-0) 100%);
+}
+.header-brand {
+  display: flex; align-items: center; gap: 12px;
+}
+.header-brand .logo {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #007a60);
+  display: grid; place-items: center;
+  font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 16px; color: var(--bg-0);
+}
+.header h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 20px; font-weight: 600; color: var(--text-0);
+  letter-spacing: -0.5px;
+}
+.header-meta {
+  display: flex; gap: 20px; margin-left: auto; align-items: center;
+}
+.meta-pill {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 12px; font-size: 11px;
+  color: var(--text-2);
+}
+.meta-pill span { color: var(--accent); font-weight: 500; }
+/* TABS */
+.tabs-bar {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: var(--bg-1); overflow-x: auto;
+  padding: 0 20px;
+}
+.tab-group { display: flex; gap: 2px; padding: 8px 0 0; }
+.tab-group-label {
+  font-family: 'Outfit', sans-serif; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text-2); padding: 8px 12px 0; align-self: center;
+}
+.tab {
+  padding: 8px 16px; cursor: pointer; border: none; background: none;
+  color: var(--text-2); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  border-bottom: 2px solid transparent; transition: all .2s;
+  white-space: nowrap; border-radius: 6px 6px 0 0;
+}
+.tab:hover { color: var(--text-1); background: var(--bg-2); }
+.tab.active {
+  color: var(--accent); border-bottom-color: var(--accent);
+  background: var(--accent-bg);
+}
+/* CONTROLS */
+.controls-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 28px; border-bottom: 1px solid var(--border);
+  background: var(--bg-1); flex-wrap: wrap;
+}
+.ctrl-group { display: flex; align-items: center; gap: 6px; }
+.ctrl-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); }
+.ctrl-toggle {
+  display: flex; background: var(--bg-3); border-radius: 6px;
+  border: 1px solid var(--border); overflow: hidden;
+}
+.ctrl-toggle button {
+  padding: 5px 14px; border: none; background: none; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--text-2); transition: all .2s;
+}
+.ctrl-toggle button.active {
+  background: var(--accent); color: var(--bg-0); font-weight: 600;
+}
+.ctrl-toggle button:hover:not(.active) { color: var(--text-0); }
+select.ctrl-select {
+  background: var(--bg-3); border: 1px solid var(--border); color: var(--text-0);
+  padding: 5px 10px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; cursor: pointer;
+}
+.ctrl-check { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.ctrl-check input[type=checkbox] { accent-color: var(--accent); }
+/* CURRENT SITUATION PANEL */
+.situation-panel {
+  margin: 20px 28px; border: 1px solid var(--accent-dim);
+  border-radius: 10px; background: var(--accent-bg);
+  padding: 20px 24px; position: relative; overflow: hidden;
+}
+.situation-panel.decayed {
+  border-color: var(--red-dim);
+  background: var(--red-bg);
+  animation: pulse-red 2s infinite;
+}
+@keyframes pulse-red {
+  0%,100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 20px var(--red-dim); }
+}
+.situation-panel::before {
+  content: 'SITUAZIONE CORRENTE';
+  position: absolute; top: 0; right: 0;
+  background: var(--accent); color: var(--bg-0);
+  font-family: 'Outfit', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 2px; padding: 4px 14px; border-radius: 0 0 0 8px;
+}
+.situation-panel.decayed::before { background: var(--red); }
+.sit-row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.sit-block { flex: 1; min-width: 180px; }
+.sit-label { font-size: 10px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.sit-value { font-size: 22px; font-weight: 700; color: var(--text-0); }
+.sit-value.green { color: var(--accent); }
+.sit-value.red { color: var(--red); }
+.sit-value.yellow { color: var(--yellow); }
+.sit-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.freshness-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  cursor: help;
+}
+.freshness-badge.f2  { background: #00e4b825; color: var(--accent); }
+.freshness-badge.f1  { background: #00e4b815; color: var(--accent); }
+.freshness-badge.f0  { background: #ffffff10; color: var(--text-2); }
+.freshness-badge.fm1 { background: #ffc85720; color: var(--yellow); }
+.freshness-badge.fm2 { background: #ff4f6a20; color: var(--red); }
+/* MAIN CONTENT */
+.main { padding: 0 28px 40px; }
+.module-panel { display: none; }
+.module-panel.active { display: block; }
+.module-title {
+  font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600;
+  margin: 24px 0 8px; color: var(--text-0);
+}
+.module-desc { font-size: 12px; color: var(--text-2); margin-bottom: 16px; max-width: 700px; }
+/* TABLES */
+.table-wrap {
+  overflow-x: auto; border: 1px solid var(--border);
+  border-radius: 8px; margin-bottom: 20px;
+}
+table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+thead th {
+  background: var(--bg-3); color: var(--text-2); font-weight: 500;
+  padding: 10px 12px; text-align: left; cursor: pointer;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px;
+  user-select: none; position: relative;
+}
+thead th:hover { color: var(--text-0); }
+thead th.sorted-asc::after { content: ' ▲'; color: var(--accent); }
+thead th.sorted-desc::after { content: ' ▼'; color: var(--accent); }
+tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+tbody tr:nth-child(even) { background: var(--bg-1); }
+tbody tr:nth-child(odd) { background: var(--bg-0); }
+tbody tr:hover { background: var(--bg-3); }
+tbody td { padding: 8px 12px; white-space: nowrap; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.pattern-cell { font-weight: 600; letter-spacing: 1px; }
+td.wr-cell { font-weight: 600; }
+.reliability { font-size: 10px; margin-left: 4px; }
+.reliability.ok { color: var(--accent); }
+.reliability.warn { color: var(--yellow); }
+.reliability.low { color: var(--red); }
+/* HEATMAP COLORING */
+.heat-green { background: var(--green-cell); color: var(--accent); font-weight: 500; }
+.heat-red { background: var(--red-cell); color: var(--red); font-weight: 500; }
+.heat-yellow { background: var(--yellow-cell); color: var(--yellow); }
+.heat-neutral { background: var(--neutral-cell); }
+/* DECAYED ROW */
+tr.decayed-row { opacity: 0.45; }
+tr.decayed-row td.pattern-cell { text-decoration: line-through; }
+/* SIGNIFICANCE */
+.sig-strong { color: var(--accent); font-weight: 600; }
+.sig-moderate { color: #5ce0b8; font-weight: 500; }
+.sig-weak { color: var(--yellow); }
+.sig-none { color: var(--text-2); opacity: 0.5; }
+td.pval-cell { font-size: 11px; letter-spacing: 0.5px; }
+.sig-stars { font-size: 10px; margin-left: 3px; letter-spacing: 1px; }
+tr.not-significant { opacity: 0.35; }
+tr.not-significant td.pattern-cell { font-style: italic; }
+/* FRESHNESS COLUMN INLINE */
+.fresh-icon { font-size: 14px; cursor: help; }
+/* TOOLTIP */
+.tooltip-wrap { position: relative; display: inline-block; }
+.tooltip-wrap .tip {
+  display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+  background: var(--bg-4); border: 1px solid var(--border-light);
+  padding: 8px 12px; border-radius: 6px; font-size: 11px; color: var(--text-1);
+  white-space: nowrap; z-index: 100; pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5);
+}
+.tooltip-wrap:hover .tip { display: block; }
+/* HEATMAP TABLE MODULE B */
+.heatmap-selector { margin-bottom: 12px; }
+/* LOADING */
+.loading-overlay {
+  position: fixed; inset: 0; background: var(--bg-0);
+  display: grid; place-items: center; z-index: 10000;
+  transition: opacity .5s;
+}
+.loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.loader {
+  text-align: center;
+}
+.loader-bar {
+  width: 200px; height: 3px; background: var(--bg-3);
+  border-radius: 2px; overflow: hidden; margin: 16px auto 0;
+}
+.loader-bar-inner {
+  height: 100%; width: 30%; background: var(--accent);
+  border-radius: 2px; animation: load-slide 1.2s ease-in-out infinite;
+}
+@keyframes load-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.loader-text {
+  font-family: 'Outfit', sans-serif; font-size: 14px;
+  color: var(--text-2); margin-top: 12px;
+}
+/* FOOTER */
+.footer {
+  border-top: 1px solid var(--border); padding: 20px 28px;
+  font-size: 11px; color: var(--text-2); line-height: 1.7;
+  background: var(--bg-1);
+}
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .header { padding: 14px 16px 12px; gap: 12px; }
+  .header h1 { font-size: 16px; }
+  .main { padding: 0 12px 30px; }
+  .situation-panel { margin: 14px 12px; padding: 14px 16px; }
+  .controls-bar { padding: 10px 12px; }
+  .sit-value { font-size: 18px; }
+}
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-1); }
+::-webkit-scrollbar-thumb { background: var(--bg-4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+/* ANIMATION ENTRANCE */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up .4s ease-out both; }
+.fade-up-d1 { animation-delay: .1s; }
+.fade-up-d2 { animation-delay: .2s; }
+.fade-up-d3 { animation-delay: .3s; }
+
+/* ═══════════ HELP SYSTEM ═══════════ */
+
+/* Info icon button (inline) */
+.info-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--bg-3); border: 1px solid var(--border-light);
+  color: var(--accent); font-size: 11px; font-weight: 700;
+  cursor: pointer; margin-left: 6px; vertical-align: middle;
+  transition: all .2s; font-family: 'Outfit', sans-serif;
+  flex-shrink: 0;
+}
+.info-btn:hover { background: var(--accent); color: var(--bg-0); transform: scale(1.15); }
+
+/* Expandable help card */
+.help-card {
+  display: none; background: var(--bg-2); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 14px 18px; margin: 8px 0 16px;
+  font-size: 12px; color: var(--text-1); line-height: 1.7;
+  font-family: 'Outfit', sans-serif;
+  animation: fade-up .25s ease-out;
+  max-width: 780px;
+}
+.help-card.visible { display: block; }
+.help-card h4 { color: var(--accent); font-size: 13px; margin-bottom: 6px; font-weight: 600; }
+.help-card p { margin-bottom: 8px; }
+.help-card .help-term {
+  display: inline-block; background: var(--bg-4); padding: 1px 7px;
+  border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--accent); margin: 0 2px;
+}
+.help-card .help-example {
+  background: var(--bg-3); border-left: 3px solid var(--accent);
+  padding: 8px 12px; margin: 8px 0; border-radius: 0 6px 6px 0;
+  font-size: 11px; font-family: 'JetBrains Mono', monospace;
+  color: var(--text-0);
+}
+.help-card .help-legend {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
+}
+.help-card .legend-item {
+  display: flex; align-items: center; gap: 5px; font-size: 11px;
+}
+.help-card .legend-swatch {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+}
+
+/* Header help button (big ?) */
+.help-trigger {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent-bg); border: 1px solid var(--accent-dim);
+  color: var(--accent); font-size: 18px; font-weight: 700;
+  cursor: pointer; transition: all .25s;
+  font-family: 'Outfit', sans-serif;
+  display: grid; place-items: center;
+}
+.help-trigger:hover { background: var(--accent); color: var(--bg-0); transform: scale(1.1); }
+
+/* ═══════════ GUIDED TOUR ═══════════ */
+.tour-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(4,7,13,.85); z-index: 50000;
+  transition: opacity .3s;
+}
+.tour-overlay.active { display: block; }
+.tour-spotlight {
+  position: absolute; border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(4,7,13,.82), 0 0 30px rgba(0,228,184,.15);
+  transition: all .45s cubic-bezier(.4,0,.2,1);
+  pointer-events: none; z-index: 50001;
+}
+.tour-card {
+  position: absolute; z-index: 50002;
+  background: var(--bg-2); border: 1px solid var(--accent-dim);
+  border-radius: 12px; padding: 20px 24px;
+  max-width: 420px; width: 90vw;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6), 0 0 20px rgba(0,228,184,.08);
+  animation: fade-up .3s ease-out;
+}
+.tour-card-step {
+  font-family: 'Outfit', sans-serif; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--accent); margin-bottom: 6px; font-weight: 600;
+}
+.tour-card-title {
+  font-family: 'Outfit', sans-serif; font-size: 17px;
+  color: var(--text-0); font-weight: 600; margin-bottom: 8px;
+}
+.tour-card-body {
+  font-family: 'Outfit', sans-serif; font-size: 13px;
+  color: var(--text-1); line-height: 1.65; margin-bottom: 16px;
+}
+.tour-card-body strong { color: var(--text-0); }
+.tour-card-body .tc-code {
+  background: var(--bg-4); padding: 1px 6px; border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+}
+.tour-nav {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.tour-dots { display: flex; gap: 5px; }
+.tour-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--bg-4); transition: all .2s;
+}
+.tour-dot.active { background: var(--accent); transform: scale(1.3); }
+.tour-btn {
+  padding: 7px 18px; border-radius: 6px; border: none;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  cursor: pointer; transition: all .2s;
+}
+.tour-btn-secondary { background: var(--bg-4); color: var(--text-1); }
+.tour-btn-secondary:hover { background: var(--border-light); color: var(--text-0); }
+.tour-btn-primary { background: var(--accent); color: var(--bg-0); font-weight: 600; }
+.tour-btn-primary:hover { filter: brightness(1.15); }
+.tour-btn-skip { background: none; border: none; color: var(--text-2); cursor: pointer;
+  font-family: 'Outfit', sans-serif; font-size: 12px; text-decoration: underline;
+}
+
+/* ═══════════ GLOSSARY SIDEBAR ═══════════ */
+.glossary-overlay {
+  display: none; position: fixed; inset: 0; z-index: 40000;
+  background: rgba(4,7,13,.6); transition: opacity .3s;
+}
+.glossary-overlay.active { display: block; }
+.glossary-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw;
+  background: var(--bg-1); border-left: 1px solid var(--border);
+  z-index: 40001; overflow-y: auto; padding: 24px;
+  transform: translateX(100%); transition: transform .35s cubic-bezier(.4,0,.2,1);
+}
+.glossary-overlay.active .glossary-panel { transform: translateX(0); }
+.glossary-close {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: none; color: var(--text-2);
+  font-size: 22px; cursor: pointer; transition: color .2s;
+}
+.glossary-close:hover { color: var(--text-0); }
+.glossary-title {
+  font-family: 'Outfit', sans-serif; font-size: 18px;
+  font-weight: 600; color: var(--text-0); margin-bottom: 20px;
+}
+.glossary-section {
+  margin-bottom: 20px;
+}
+.glossary-section h3 {
+  font-family: 'Outfit', sans-serif; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--accent); margin-bottom: 10px; font-weight: 600;
+}
+.glossary-entry {
+  margin-bottom: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.glossary-entry:last-child { border: none; }
+.glossary-entry dt {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  color: var(--text-0); font-weight: 600; margin-bottom: 3px;
+}
+.glossary-entry dd {
+  font-family: 'Outfit', sans-serif; font-size: 12px;
+  color: var(--text-2); line-height: 1.6;
+}
+
+/* ═══════════ WELCOME BANNER ═══════════ */
+.welcome-banner {
+  margin: 20px 28px 0; padding: 16px 24px;
+  background: linear-gradient(135deg, var(--bg-2), var(--bg-3));
+  border: 1px solid var(--border-light); border-radius: 10px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.welcome-banner.hidden { display: none; }
+.welcome-icon { font-size: 28px; }
+.welcome-text { flex: 1; min-width: 200px; }
+.welcome-text h3 {
+  font-family: 'Outfit', sans-serif; font-size: 14px;
+  color: var(--text-0); font-weight: 600; margin-bottom: 4px;
+}
+.welcome-text p {
+  font-family: 'Outfit', sans-serif; font-size: 12px;
+  color: var(--text-2); line-height: 1.5;
+}
+.welcome-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.welcome-btn {
+  padding: 7px 16px; border-radius: 6px; border: none;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  cursor: pointer; transition: all .2s;
+}
+.welcome-btn-tour { background: var(--accent); color: var(--bg-0); font-weight: 600; }
+.welcome-btn-tour:hover { filter: brightness(1.15); }
+.welcome-btn-glossary { background: var(--bg-4); color: var(--text-1); border: 1px solid var(--border); }
+.welcome-btn-glossary:hover { background: var(--border-light); }
+.welcome-btn-dismiss { background: none; color: var(--text-2); border: none; cursor: pointer;
+  font-family: 'Outfit', sans-serif; font-size: 11px; text-decoration: underline; align-self: center;
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loader">
+    <div style="font-size:28px;font-family:'Outfit',sans-serif;font-weight:700;color:var(--accent)">BTC Pattern Analyzer</div>
+    <div class="loader-bar"><div class="loader-bar-inner"></div></div>
+    <div class="loader-text" id="loadingText">Caricamento dati storici…</div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-brand">
+    <div class="logo">₿</div>
+    <div>
+      <h1>BTC Pattern Analyzer</h1>
+      <div style="font-size:11px;color:var(--text-2);font-family:'Outfit',sans-serif">Analisi statistica sequenze candele</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <div class="meta-pill">Ultimo dato: <span id="metaLastDate">—</span></div>
+    <div class="meta-pill">Candele daily: <span id="metaDailyCount">—</span></div>
+    <div class="meta-pill">Candele weekly: <span id="metaWeeklyCount">—</span></div>
+    <div class="meta-pill" style="display:flex;gap:6px;padding:2px 4px;">
+      <button onclick="refreshData()" title="Aggiorna dati da Binance" style="background:none;border:1px solid var(--border);color:var(--accent);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">⟳ Refresh</button>
+      <button onclick="exportDailyJSON()" title="Scarica btc_daily_data.json" style="background:none;border:1px solid var(--border);color:var(--text-2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">↓ Daily</button>
+      <button onclick="exportWeeklyJSON()" title="Scarica btc_weekly_data.json" style="background:none;border:1px solid var(--border);color:var(--text-2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">↓ Weekly</button>
+      <button onclick="clearCache()" title="Cancella cache IndexedDB" style="background:none;border:1px solid var(--border);color:var(--red);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">✕ Cache</button>
+    </div>
+    <button class="help-trigger" onclick="openGlossary()" title="Glossario e aiuto">?</button>
+    <button class="help-trigger" onclick="startTour()" title="Tour guidato" style="font-size:14px;">▶</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<nav class="tabs-bar">
+  <div class="tab-group">
+    <button class="tab active" data-tab="modA">A · Streak</button>
+    <button class="tab" data-tab="modB">B · Soglie</button>
+    <button class="tab" data-tab="modC">C · Pattern</button>
+    <button class="tab" data-tab="modD">D · Regime</button>
+    <button class="tab" data-tab="modE">E · Classifica</button>
+    <button class="tab" data-tab="modF">F · Freschezza</button>
+  </div>
+</nav>
+
+<!-- CONTROLS -->
+<div class="controls-bar">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Timeframe</span>
+    <div class="ctrl-toggle" id="tfToggle">
+      <button class="active" data-tf="daily">Daily</button>
+      <button data-tf="weekly">Weekly</button>
+    </div>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Lungh. pattern</span>
+    <select class="ctrl-select" id="patternLen">
+      <option value="2">2 candele</option>
+      <option value="3" selected>3 candele</option>
+      <option value="4">4 candele</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Regime</span>
+    <select class="ctrl-select" id="regimeFilter">
+      <option value="all">Tutti</option>
+      <option value="BULL+LOW">Bull + Low Vol</option>
+      <option value="BULL+HIGH">Bull + High Vol</option>
+      <option value="BEAR+LOW">Bear + Low Vol</option>
+      <option value="BEAR+HIGH">Bear + High Vol</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label class="ctrl-check">
+      <input type="checkbox" id="hideDecayed">
+      <span class="ctrl-label" style="margin:0">Nascondi decaduti</span>
+    </label>
+  </div>
+  <div class="ctrl-group">
+    <label class="ctrl-check">
+      <input type="checkbox" id="onlySignificant">
+      <span class="ctrl-label" style="margin:0">Solo significativi (p&lt;0.05)</span>
+    </label>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">α</span>
+    <select class="ctrl-select" id="alphaLevel">
+      <option value="0.01">0.01 (★★★)</option>
+      <option value="0.05" selected>0.05 (★★)</option>
+      <option value="0.10">0.10 (★)</option>
+    </select>
+  </div>
+</div>
+
+<!-- SITUAZIONE CORRENTE -->
+<div class="situation-panel fade-up" id="sitPanel">
+  <div class="sit-row" id="sitContent">
+    <div class="sit-block"><div class="sit-label">Caricamento…</div></div>
+  </div>
+</div>
+
+<!-- WELCOME BANNER -->
+<div class="welcome-banner" id="welcomeBanner">
+  <div class="welcome-icon">📊</div>
+  <div class="welcome-text">
+    <h3>Prima volta qui? Questo strumento analizza i pattern statistici di Bitcoin.</h3>
+    <p>Studia le sequenze di candele giornaliere e settimanali per individuare probabilità direzionali ricorrenti. Clicca il pulsante <strong>ⓘ</strong> accanto a ogni sezione per spiegazioni dettagliate.</p>
+  </div>
+  <div class="welcome-actions">
+    <button class="welcome-btn welcome-btn-tour" onclick="startTour()">▶ Tour guidato</button>
+    <button class="welcome-btn welcome-btn-glossary" onclick="openGlossary()">? Glossario</button>
+    <button class="welcome-btn-dismiss" onclick="dismissWelcome()">Nascondi</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- MODULE A -->
+  <div class="module-panel active" id="modA">
+    <div class="module-title fade-up">Modulo A — Streak Analysis <span class="info-btn" onclick="toggleHelp('helpA')">i</span></div>
+    <div class="help-card" id="helpA">
+      <h4>Come leggere questa tabella</h4>
+      <p>Una <span class="help-term">streak</span> è una serie di candele consecutive nella stessa direzione. Ad esempio, <span class="help-term">3U</span> significa "3 candele rialziste di fila".</p>
+      <p>La tabella mostra cosa è successo storicamente <strong>dopo</strong> ogni streak:</p>
+      <p><span class="help-term">P(Up) +1</span> = probabilità che il prezzo salga il giorno dopo. <span class="help-term">P(Up) +2</span> e <span class="help-term">+3</span> = la stessa cosa a 2 e 3 giorni di distanza.</p>
+      <p><strong>Le colonne p-val e Sig.:</strong></p>
+      <p><span class="help-term">p-val</span> = p-value del test binomiale. Risponde a: "Se il mercato fosse puramente casuale (50/50), quante probabilità ci sarebbero di osservare un WR così estremo?". Più è basso, più il pattern è reale e non frutto del caso.</p>
+      <p><span class="help-term">Sig.</span> = stelle di significatività: <strong>★★★</strong> (p&lt;0.01, molto forte), <strong>★★</strong> (p&lt;0.05, affidabile), <strong>★</strong> (p&lt;0.10, marginale), <strong>—</strong> (non significativo, potrebbe essere solo rumore).</p>
+      <div class="help-example">Esempio: "3D · WR 65% · n=80 · p=0.004 ★★★" → dopo 3 ribassisti, il prezzo è salito il 65% delle volte su 80 casi. La probabilità che sia un caso è solo 0.4% → pattern reale.<br><br>Confronto: "5U · WR 70% · n=12 · p=0.18 —" → WR altissimo, ma solo 12 campioni. p=0.18 dice che poteva succedere per caso il 18% delle volte → non fidarti.</div>
+      <div class="help-legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--green-cell)"></div> ≥ 60% (segnale forte)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--red-cell)"></div> ≤ 40% (segnale ribassista)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--neutral-cell)"></div> Zona neutra</div>
+        <div class="legend-item">★★★ p&lt;0.01 &nbsp; ★★ p&lt;0.05 &nbsp; ★ p&lt;0.10 &nbsp; — non sig.</div>
+      </div>
+    </div>
+    <div class="module-desc fade-up fade-up-d1">Probabilità direzionale dopo N candele consecutive nella stessa direzione. P(Up) indica la probabilità di trovarsi in territorio positivo dopo K barre dal punto di ingresso.</div>
+    <div class="table-wrap fade-up fade-up-d2" id="tableA"></div>
+  </div>
+
+  <!-- MODULE B -->
+  <div class="module-panel" id="modB">
+    <div class="module-title">Modulo B — Probabilità Superamento Soglia <span class="info-btn" onclick="toggleHelp('helpB')">i</span></div>
+    <div class="help-card" id="helpB">
+      <h4>Cosa risponde questa tabella</h4>
+      <p>Risponde alla domanda: <strong>"Dopo questa streak, quante probabilità ho che il prezzo salga di almeno X%?"</strong></p>
+      <p>Seleziona una streak dal menu a tendina (es. <span class="help-term">3D</span> = tre ribassiste). La tabella mostra una heatmap dove:</p>
+      <p>• <strong>Righe</strong> = soglie di rendimento (+0.5%, +1%, +2%, +3%, +5%)<br>
+         • <strong>Colonne</strong> = orizzonte temporale (1, 2, 3, 5, 7 barre)</p>
+      <div class="help-example">Esempio: cella [≥+2%, 3 barre] = 35% → dopo la streak, il 35% delle volte il prezzo ha guadagnato almeno il 2% entro 3 giorni.</div>
+      <p>Più la cella è verde, più la probabilità è alta. Il numero sotto (n=...) indica su quanti campioni è calcolata.</p>
+    </div>
+    <div class="module-desc">Probabilità di raggiungere un rendimento ≥ X% entro K barre, dopo una streak direzionale. Seleziona la streak da analizzare.</div>
+    <div class="heatmap-selector">
+      <span class="ctrl-label">Streak</span>
+      <select class="ctrl-select" id="streakSelectB"></select>
+    </div>
+    <div class="table-wrap" id="tableB"></div>
+  </div>
+
+  <!-- MODULE C -->
+  <div class="module-panel" id="modC">
+    <div class="module-title">Modulo C — Pattern Sequenze Arbitrarie <span class="info-btn" onclick="toggleHelp('helpC')">i</span></div>
+    <div class="help-card" id="helpC">
+      <h4>Oltre le streak pure: sequenze miste</h4>
+      <p>Questo modulo analizza <strong>tutte le possibili combinazioni</strong> di candele, non solo quelle nella stessa direzione.</p>
+      <p>Ogni candela è classificata come: <span class="help-term">U</span> = rialzista (Up), <span class="help-term">D</span> = ribassista (Down), <span class="help-term">J</span> = indecisa (doJi).</p>
+      <p>Per 3 candele ci sono 27 combinazioni possibili (U-U-U, U-U-D, U-U-J, …). La tabella mostra le statistiche per ciascuna.</p>
+      <p><strong>Colonne chiave:</strong></p>
+      <p><span class="help-term">WR</span> = Win Rate: % di volte in cui il prezzo è salito dopo il pattern.<br>
+         <span class="help-term">p-val</span> = Test statistico: quanto è probabile che il WR sia frutto del caso? Sotto 0.05 = significativo.<br>
+         <span class="help-term">P10/P50/P90</span> = Percentili: nel 10% peggiore dei casi hai perso P10%, nella metà dei casi hai guadagnato P50%, nel 10% migliore hai guadagnato P90%.<br>
+         <span class="help-term">Sharpe</span> = Rapporto rendimento/rischio. Più è alto, più il pattern è "efficiente".</p>
+      <div class="help-example">Esempio: D-D-D · WR 65% · p=0.003 ★★★ · P10 -1.2% · P90 +4.8% → dopo 3 ribassiste, alta probabilità di rimbalzo — e il test statistico conferma che NON è un caso (p=0.003).</div>
+    </div>
+    <div class="module-desc">Tutte le combinazioni U/D/J per la lunghezza selezionata, con WR, persistenza, percentili e Sharpe.</div>
+    <div class="table-wrap" id="tableC"></div>
+  </div>
+
+  <!-- MODULE D -->
+  <div class="module-panel" id="modD">
+    <div class="module-title">Modulo D — Analisi per Regime di Mercato <span class="info-btn" onclick="toggleHelp('helpD')">i</span></div>
+    <div class="help-card" id="helpD">
+      <h4>Il contesto cambia tutto</h4>
+      <p>Lo stesso pattern può comportarsi diversamente in mercato rialzista o ribassista, volatile o calmo. Questo modulo filtra i dati per <strong>regime di mercato</strong>.</p>
+      <p><strong>Come viene determinato il regime:</strong></p>
+      <p><span class="help-term">BULL</span> = prezzo sopra la media mobile a 50 periodi (trend rialzista)<br>
+         <span class="help-term">BEAR</span> = prezzo sotto la SMA(50) (trend ribassista)<br>
+         <span class="help-term">HIGH</span> = volatilità (ATR 14) sopra la mediana storica<br>
+         <span class="help-term">LOW</span> = volatilità sotto la mediana storica</p>
+      <p>Usa il menu "Regime" nella barra controlli per filtrare. Se i campioni sono troppo pochi, il sistema ti avvisa.</p>
+      <div class="help-example">Uso tipico: confronta il pattern D-D-D in BULL+LOW vs BEAR+HIGH — potresti scoprire che il rimbalzo è molto più probabile in bear market con bassa volatilità.</div>
+    </div>
+    <div class="module-desc">Stesse statistiche del Modulo C, filtrate per regime di mercato (trend + volatilità).</div>
+    <div class="table-wrap" id="tableD"></div>
+  </div>
+
+  <!-- MODULE E -->
+  <div class="module-panel" id="modE">
+    <div class="module-title">Modulo E — Classifica Globale Pattern <span class="info-btn" onclick="toggleHelp('helpE')">i</span></div>
+    <div class="help-card" id="helpE">
+      <h4>I migliori pattern di sempre</h4>
+      <p>Tre classifiche dei pattern con almeno 15 campioni storici, ordinati per criteri diversi:</p>
+      <p><strong>🏆 Top WR</strong> = i pattern che più spesso producono un rialzo il giorno dopo.<br>
+         <strong>⚡ Top Sharpe</strong> = i pattern con il miglior rapporto rendimento/rischio (non solo frequenza di vittoria, ma anche entità).<br>
+         <strong>🔄 Mean Reversion</strong> = i pattern ribassisti (almeno 2 candele D) dopo i quali il prezzo rimbalza più spesso. La <em>mean reversion</em> è la tendenza del prezzo a tornare verso la media dopo movimenti estremi.</p>
+      <p>I pattern con icona 🔴 (decaduti) sono mostrati barrati — erano forti storicamente ma hanno perso efficacia negli ultimi 6 mesi.</p>
+    </div>
+    <div class="module-desc">Top pattern per WR, Sharpe e mean reversion. Minimo 15 campioni. I pattern decaduti sono barrati.</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:320px;">
+        <h3 style="font-family:'Outfit',sans-serif;font-size:13px;color:var(--accent);margin-bottom:8px;">🏆 Top 10 per Win Rate</h3>
+        <div class="table-wrap" id="tableE_wr"></div>
+      </div>
+      <div style="flex:1;min-width:320px;">
+        <h3 style="font-family:'Outfit',sans-serif;font-size:13px;color:var(--yellow);margin-bottom:8px;">⚡ Top 10 per Sharpe</h3>
+        <div class="table-wrap" id="tableE_sharpe"></div>
+      </div>
+      <div style="flex:1;min-width:320px;">
+        <h3 style="font-family:'Outfit',sans-serif;font-size:13px;color:#7c8cf5;margin-bottom:8px;">🔄 Top 10 Mean Reversion</h3>
+        <div class="table-wrap" id="tableE_mr"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULE F -->
+  <div class="module-panel" id="modF">
+    <div class="module-title">Modulo F — Validazione di Freschezza <span class="info-btn" onclick="toggleHelp('helpF')">i</span></div>
+    <div class="help-card" id="helpF">
+      <h4>Questo pattern funziona ancora?</h4>
+      <p>Un pattern che funzionava nel 2019 potrebbe non funzionare più oggi. Questo modulo <strong>confronta le statistiche storiche con quelle degli ultimi 6 mesi</strong> per verificare se un pattern è ancora valido.</p>
+      <p><strong>Punteggi di freschezza:</strong></p>
+      <p>🟢🟢 <strong>RAFFORZATO</strong> = funziona meglio ora che in passato (+10pp o più)<br>
+         🟢 <strong>CONFERMATO</strong> = funziona come sempre (variazione entro ±10pp)<br>
+         ⚪ <strong>NEUTRO</strong> = troppi pochi campioni recenti per giudicare<br>
+         🟡 <strong>INDEBOLITO</strong> = funziona peggio ora (−10pp o più)<br>
+         🔴 <strong>DECADUTO</strong> = era forte (WR ≥55%) ma ora crolla sotto il 40%</p>
+      <p><span class="help-term">Δ WR</span> = la differenza tra WR recente e WR storico, in punti percentuali.</p>
+      <div class="help-example">Esempio: Pattern U-D-U, WR storico 62% su 120 campioni, WR ultimi 6m 38% su 8 campioni → Δ = −24pp → DECADUTO. Non fidarti di questo pattern.</div>
+    </div>
+    <div class="module-desc">Confronto WR storico globale vs ultimi 6 mesi. Mostra quali pattern sono ancora validi e quali sono decaduti.</div>
+    <div class="table-wrap" id="tableF"></div>
+  </div>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <strong style="color:var(--text-1)">Note Metodologiche:</strong> WR = close-to-close. Rendimento = (close[i+k] - close[i]) / close[i] × 100. Sharpe = μ/σ (senza risk-free). SMA(50) e ATR(14) per regime. Finestra freschezza: 180gg daily, 26 sett. weekly. <strong>Significatività:</strong> z-test binomiale bilaterale, H₀: P(Up) = 50%. p-value via approssimazione normale. ★★★ p&lt;0.01, ★★ p&lt;0.05, ★ p&lt;0.10.<br>
+  <strong style="color:var(--text-1)">Dati:</strong> OHLCV BTC/USDT da Binance API (dal 17/08/2017). Primo caricamento richiede connessione Internet (~10 sec). Successivi caricamenti istantanei da cache IndexedDB (stale dopo 20h). Pulsanti ↓ per esportare JSON offline.<br>
+  <strong style="color:var(--red)">Disclaimer:</strong> Strumento di analisi statistica a scopo educativo. Non costituisce consulenza finanziaria. Le performance passate non garantiscono risultati futuri.
+</footer>
+
+<!-- TOUR OVERLAY -->
+<div class="tour-overlay" id="tourOverlay">
+  <div class="tour-spotlight" id="tourSpotlight"></div>
+  <div class="tour-card" id="tourCard">
+    <div class="tour-card-step" id="tourStep"></div>
+    <div class="tour-card-title" id="tourTitle"></div>
+    <div class="tour-card-body" id="tourBody"></div>
+    <div class="tour-nav">
+      <button class="tour-btn-skip" onclick="endTour()">Esci dal tour</button>
+      <div class="tour-dots" id="tourDots"></div>
+      <div style="display:flex;gap:6px;">
+        <button class="tour-btn tour-btn-secondary" id="tourPrev" onclick="tourNavigate(-1)">← Indietro</button>
+        <button class="tour-btn tour-btn-primary" id="tourNext" onclick="tourNavigate(1)">Avanti →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GLOSSARY SIDEBAR -->
+<div class="glossary-overlay" id="glossaryOverlay" onclick="closeGlossary(event)">
+  <div class="glossary-panel">
+    <button class="glossary-close" onclick="closeGlossary()">&times;</button>
+    <div class="glossary-title">📖 Glossario & Guida Rapida</div>
+
+    <div class="glossary-section">
+      <h3>Concetti Base</h3>
+      <dl>
+        <div class="glossary-entry">
+          <dt>Candela (Candle)</dt>
+          <dd>Rappresentazione di un periodo (giorno o settimana): ha un prezzo di apertura, chiusura, massimo e minimo. Il "corpo" è la differenza tra apertura e chiusura.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>U (Up) / D (Down) / J (Doji)</dt>
+          <dd><strong>U</strong> = candela rialzista (chiusura > apertura, corpo > 25% del range). <strong>D</strong> = ribassista. <strong>J</strong> = indecisa (corpo ≤ 25% del range, il mercato non sa dove andare).</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Pattern / Sequenza</dt>
+          <dd>Una serie di candele consecutive, es. "U-D-U" = rialzista, poi ribassista, poi rialzista. Il sistema cerca cosa è successo dopo ogni sequenza nella storia.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Streak</dt>
+          <dd>Sequenza di candele nella stessa direzione. "3D" = 3 candele ribassiste consecutive.</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="glossary-section">
+      <h3>Metriche Statistiche</h3>
+      <dl>
+        <div class="glossary-entry">
+          <dt>Win Rate (WR)</dt>
+          <dd>Percentuale di volte in cui il prezzo è salito dopo un pattern. WR 60% = su 10 occorrenze, 6 volte il prezzo è salito.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Persistenza (+2, +3)</dt>
+          <dd>WR calcolato non sul giorno dopo, ma a 2 o 3 giorni dal pattern. Indica se l'effetto dura nel tempo.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Rendimento Medio / Mediano</dt>
+          <dd>Media e mediana dei rendimenti % dopo il pattern. Il mediano è più robusto (non influenzato da valori estremi).</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Percentili (P10, P50, P90)</dt>
+          <dd>P10 = nel 90% dei casi il risultato è stato migliore di questo (worst case tipico). P50 = valore mediano. P90 = nel 10% migliore dei casi (best case tipico).</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Sharpe Ratio</dt>
+          <dd>Rendimento medio diviso per la volatilità. Misura l'"efficienza": un pattern con Sharpe alto rende bene con poca variabilità. Sharpe > 0.5 è buono, > 1.0 è molto buono.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>p-value (Significatività)</dt>
+          <dd>Risponde a: "Se il mercato fosse casuale (50/50), quante probabilità ci sarebbero di osservare questo WR?". Un p-value basso (< 0.05) significa che il pattern è molto probabilmente reale, non una fluttuazione statistica. Calcolato con un z-test binomiale. ★★★ = p < 0.01 (fortissimo), ★★ = p < 0.05 (affidabile), ★ = p < 0.10 (marginale), — = non significativo.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>z-score</dt>
+          <dd>Misura di quante deviazioni standard il WR osservato si discosta dal 50% atteso. Più è alto in valore assoluto (> 2), più il pattern è significativo. Esempio: z = 2.68 con p = 0.004 → il WR è circa 2.7 deviazioni standard lontano dal caso → quasi certamente un pattern reale.</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="glossary-section">
+      <h3>Regime & Freschezza</h3>
+      <dl>
+        <div class="glossary-entry">
+          <dt>Regime di Mercato</dt>
+          <dd>Combinazione di trend (BULL/BEAR, sopra/sotto la media mobile a 50 periodi) e volatilità (HIGH/LOW, ATR a 14 periodi sopra/sotto la mediana storica).</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Mean Reversion</dt>
+          <dd>Tendenza del prezzo a "tornare verso la media" dopo movimenti estremi. Dopo molti ribassi, aumenta la probabilità di un rimbalzo.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Freshness Score</dt>
+          <dd>Confronto tra WR storico e WR degli ultimi 6 mesi. Un pattern "decaduto" funzionava in passato ma non più recentemente.</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="glossary-section">
+      <h3>Interfaccia</h3>
+      <dl>
+        <div class="glossary-entry">
+          <dt>Colori celle</dt>
+          <dd>🟩 Verde = probabilità ≥ 60% (segnale forte). 🟥 Rosso = ≤ 40%. 🟨 Giallo = zona intermedia. Le tabelle sono ordinabili cliccando sulle intestazioni.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>Pulsanti ↓ Daily / ↓ Weekly</dt>
+          <dd>Esportano i dati come file JSON per uso offline. Mettili nella stessa cartella dell'HTML per caricamenti istantanei senza Internet.</dd>
+        </div>
+        <div class="glossary-entry">
+          <dt>⟳ Refresh</dt>
+          <dd>Forza il ri-download dei dati da Binance. La cache si aggiorna automaticamente ogni 20 ore.</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   HELP SYSTEM — Tour, Glossary, Help Cards
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Help Card Toggle ──────────────────────────────────────── */
+function toggleHelp(id) {
+  const card = document.getElementById(id);
+  if (card) card.classList.toggle('visible');
+}
+
+/* ─── Welcome Banner ────────────────────────────────────────── */
+function dismissWelcome() {
+  document.getElementById('welcomeBanner').classList.add('hidden');
+  try { localStorage.setItem('btc_pa_welcome_dismissed', '1'); } catch {}
+}
+function checkWelcome() {
+  try {
+    if (localStorage.getItem('btc_pa_welcome_dismissed') === '1') {
+      document.getElementById('welcomeBanner').classList.add('hidden');
+    }
+  } catch {}
+}
+checkWelcome();
+
+/* ─── Glossary Sidebar ──────────────────────────────────────── */
+function openGlossary() {
+  document.getElementById('glossaryOverlay').classList.add('active');
+}
+function closeGlossary(e) {
+  if (!e || e.target === document.getElementById('glossaryOverlay') || e.target.classList.contains('glossary-close')) {
+    document.getElementById('glossaryOverlay').classList.remove('active');
+  }
+}
+
+/* ─── Guided Tour ───────────────────────────────────────────── */
+const TOUR_STEPS = [
+  {
+    target: '#sitPanel',
+    title: 'Situazione Corrente',
+    body: 'Questo pannello mostra la <strong>fotografia live</strong> del mercato. Analizza le ultime 3 candele e ti dice: qual è la sequenza attuale, qual è il Win Rate storico, se il pattern è ancora valido (freschezza), e i percentili di rendimento attesi. È il punto di partenza per ogni analisi.',
+  },
+  {
+    target: '.tabs-bar',
+    title: 'Moduli di Analisi',
+    body: 'Il sistema ha 6 moduli, ognuno risponde a una domanda diversa:<br><br><strong>A · Streak</strong> → Dopo N giorni nella stessa direzione, cosa succede?<br><strong>B · Soglie</strong> → Quante probabilità ho di guadagnare almeno X%?<br><strong>C · Pattern</strong> → Tutte le combinazioni possibili di candele.<br><strong>D · Regime</strong> → Come cambia il pattern in bull/bear market?<br><strong>E · Classifica</strong> → Quali sono i pattern migliori in assoluto?<br><strong>F · Freschezza</strong> → Quali pattern funzionano ancora oggi?',
+  },
+  {
+    target: '.controls-bar',
+    title: 'Barra Controlli',
+    body: '<strong>Timeframe</strong>: alterna tra dati giornalieri e settimanali. Il weekly ha meno campioni ma pattern più robusti.<br><br><strong>Lungh. pattern</strong>: analizza sequenze di 2, 3 o 4 candele. Più la sequenza è lunga, più è specifica ma con meno campioni.<br><br><strong>Regime</strong>: filtra per contesto di mercato (utile nel Modulo D).<br><br><strong>Nascondi decaduti</strong>: rimuove i pattern che non funzionano più.',
+  },
+  {
+    target: '#modA',
+    title: 'Modulo A — Streak Analysis',
+    body: 'La tabella più intuitiva. Mostra cosa succede dopo N candele consecutive nella stessa direzione.<br><br>Cerca le righe con <strong>WR alto e colore verde</strong>: sono i pattern con maggiore probabilità di successo. Guarda anche la colonna <strong>Fresc.</strong> (freschezza) per verificare che il pattern funzioni ancora.',
+  },
+  {
+    target: '.header-meta',
+    title: 'Gestione Dati & Aiuto',
+    body: '<strong>⟳ Refresh</strong> = ri-scarica i dati da Binance (servono ~10 secondi).<br><strong>↓ Daily / ↓ Weekly</strong> = esporta i file JSON per uso offline.<br><strong>✕ Cache</strong> = cancella la cache locale.<br><strong>?</strong> = apre il glossario con tutti i termini spiegati.<br><strong>▶</strong> = rilancia questo tour guidato.<br><br>I dati vengono memorizzati automaticamente nel browser e si aggiornano ogni 20 ore.',
+  },
+  {
+    target: null, // centered, no target
+    title: 'Pronto!',
+    body: 'Ora sai orientarti. Ricorda:<br><br>• Clicca <strong>ⓘ</strong> accanto a ogni modulo per spiegazioni dettagliate<br>• Le tabelle sono <strong>ordinabili</strong>: clicca sulle intestazioni delle colonne<br>• Passa il mouse sulle icone di freschezza per vedere il dettaglio storico vs recente<br>• Un WR del 60% con ✓ (≥30 campioni) è molto più affidabile di un 75% con ⚠ (&lt;15 campioni)<br><br><strong>Buona analisi!</strong>',
+  },
+];
+
+let tourCurrent = 0;
+
+function startTour() {
+  tourCurrent = 0;
+  document.getElementById('tourOverlay').classList.add('active');
+  renderTourStep();
+  dismissWelcome();
+}
+
+function endTour() {
+  document.getElementById('tourOverlay').classList.remove('active');
+}
+
+function tourNavigate(dir) {
+  tourCurrent += dir;
+  if (tourCurrent >= TOUR_STEPS.length) { endTour(); return; }
+  if (tourCurrent < 0) tourCurrent = 0;
+  renderTourStep();
+}
+
+function renderTourStep() {
+  const step = TOUR_STEPS[tourCurrent];
+  const overlay = document.getElementById('tourOverlay');
+  const spotlight = document.getElementById('tourSpotlight');
+  const card = document.getElementById('tourCard');
+
+  document.getElementById('tourStep').textContent = `Step ${tourCurrent + 1} di ${TOUR_STEPS.length}`;
+  document.getElementById('tourTitle').textContent = step.title;
+  document.getElementById('tourBody').innerHTML = step.body;
+
+  // dots
+  const dots = document.getElementById('tourDots');
+  dots.innerHTML = TOUR_STEPS.map((_, i) =>
+    `<div class="tour-dot ${i === tourCurrent ? 'active' : ''}"></div>`
+  ).join('');
+
+  // prev/next buttons
+  document.getElementById('tourPrev').style.display = tourCurrent === 0 ? 'none' : '';
+  const nextBtn = document.getElementById('tourNext');
+  nextBtn.textContent = tourCurrent === TOUR_STEPS.length - 1 ? 'Chiudi ✓' : 'Avanti →';
+
+  // spotlight & card positioning
+  if (step.target) {
+    const el = document.querySelector(step.target);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const pad = 8;
+      spotlight.style.display = 'block';
+      spotlight.style.top = (rect.top + window.scrollY - pad) + 'px';
+      spotlight.style.left = (rect.left - pad) + 'px';
+      spotlight.style.width = (rect.width + pad * 2) + 'px';
+      spotlight.style.height = (rect.height + pad * 2) + 'px';
+
+      // scroll into view
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // card position: below element if room, else above
+      setTimeout(() => {
+        const cardRect = card.getBoundingClientRect();
+        const below = rect.bottom + 16;
+        const above = rect.top + window.scrollY - cardRect.height - 16;
+        if (below + cardRect.height < window.innerHeight + window.scrollY) {
+          card.style.top = below + 'px';
+        } else {
+          card.style.top = Math.max(10, above) + 'px';
+        }
+        card.style.left = Math.min(rect.left, window.innerWidth - 440) + 'px';
+      }, 100);
+    } else {
+      spotlight.style.display = 'none';
+      card.style.top = '50%'; card.style.left = '50%';
+      card.style.transform = 'translate(-50%, -50%)';
+    }
+  } else {
+    spotlight.style.display = 'none';
+    card.style.top = '50%'; card.style.left = '50%';
+    card.style.transform = 'translate(-50%, -50%)';
+  }
+
+  // reset transform if target exists
+  if (step.target && document.querySelector(step.target)) {
+    card.style.transform = 'none';
+  }
+}
+
+// keyboard nav for tour
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('tourOverlay').classList.contains('active')) return;
+  if (e.key === 'ArrowRight' || e.key === 'Enter') tourNavigate(1);
+  if (e.key === 'ArrowLeft') tourNavigate(-1);
+  if (e.key === 'Escape') endTour();
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   BTC PATTERN ANALYZER — ENGINE
+   ═══════════════════════════════════════════════════════════════ */
+
+const RECENCY_CONFIG = {
+  windowDays: 180,
+  windowWeeks: 26,
+  minSamplesJudge: 3,
+  minSamplesStrong: 5,
+  thresholdConfirmed: 10,
+  thresholdDecayed: 55,
+  thresholdDecayedRecent: 40,
+};
+
+let STATE = {
+  tf: 'daily',
+  patternLen: 3,
+  regimeFilter: 'all',
+  hideDecayed: false,
+  onlySignificant: false,
+  alphaLevel: 0.05,
+  dailyData: null,
+  weeklyData: null,
+};
+
+/* ─── UTILITIES ─────────────────────────────────────────────── */
+function pct(n, d) { return d === 0 ? 0 : (n / d) * 100; }
+function mean(arr) { return arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length; }
+function median(arr) {
+  if (arr.length === 0) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+function stdev(arr) {
+  if (arr.length < 2) return 0;
+  const m = mean(arr);
+  return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / (arr.length - 1));
+}
+function percentile(arr, p) {
+  if (arr.length === 0) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const i = (p / 100) * (s.length - 1);
+  const lo = Math.floor(i), hi = Math.ceil(i);
+  return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (i - lo);
+}
+function sharpe(arr) { const s = stdev(arr); return s === 0 ? 0 : mean(arr) / s; }
+
+/* ─── STATISTICAL SIGNIFICANCE (z-test for proportions) ───── */
+// Abramowitz & Stegun approximation of the normal CDF
+function normalCDF(z) {
+  if (z < -8) return 0;
+  if (z > 8) return 1;
+  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429;
+  const p=0.3275911;
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + p * x);
+  const erf = 1 - ((((a5*t+a4)*t+a3)*t+a2)*t+a1) * t * Math.exp(-x*x);
+  return 0.5 * (1 + sign * erf);
+}
+
+// Two-tailed z-test: H0: WR = p0, H1: WR ≠ p0
+function zTestProportion(wrObserved, n, p0 = 0.5) {
+  if (n < 2) return { z: 0, pValue: 1 };
+  const p = wrObserved / 100; // convert from percentage
+  const se = Math.sqrt(p0 * (1 - p0) / n);
+  if (se === 0) return { z: 0, pValue: 1 };
+  const z = (p - p0) / se;
+  const pValue = 2 * (1 - normalCDF(Math.abs(z))); // two-tailed
+  return { z: parseFloat(z.toFixed(3)), pValue: parseFloat(pValue.toFixed(4)) };
+}
+
+function fmtPval(p) {
+  if (p < 0.001) return '<.001';
+  if (p < 0.01) return p.toFixed(3);
+  return p.toFixed(2);
+}
+
+function sigClass(pVal) {
+  if (pVal < 0.01) return 'sig-strong';   // very significant
+  if (pVal < 0.05) return 'sig-moderate'; // significant
+  if (pVal < 0.10) return 'sig-weak';     // marginally significant
+  return 'sig-none';                       // not significant
+}
+
+function sigLabel(pVal) {
+  if (pVal < 0.01) return '★★★';
+  if (pVal < 0.05) return '★★';
+  if (pVal < 0.10) return '★';
+  return '—';
+}
+
+function fmtPct(v) { return v.toFixed(1) + '%'; }
+function fmtRet(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; }
+function fmtSharpe(v) { return v.toFixed(2); }
+
+/* ─── CANDLE CLASSIFICATION ─────────────────────────────────── */
+function classifyCandle(o, h, l, c) {
+  const range = h - l;
+  if (range === 0) return 'J';
+  const body = Math.abs(c - o);
+  if (body / range <= 0.25) return 'J';
+  return c > o ? 'U' : 'D';
+}
+
+function classifyAll(data) {
+  return data.map(d => ({
+    ...d,
+    type: classifyCandle(d.open, d.high, d.low, d.close)
+  }));
+}
+
+/* ─── TECHNICAL INDICATORS ──────────────────────────────────── */
+function calcSMA(data, period) {
+  const sma = new Array(data.length).fill(null);
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += data[j].close;
+    sma[i] = sum / period;
+  }
+  return sma;
+}
+
+function calcATR(data, period) {
+  const tr = new Array(data.length).fill(0);
+  tr[0] = data[0].high - data[0].low;
+  for (let i = 1; i < data.length; i++) {
+    const hl = data[i].high - data[i].low;
+    const hc = Math.abs(data[i].high - data[i - 1].close);
+    const lc = Math.abs(data[i].low - data[i - 1].close);
+    tr[i] = Math.max(hl, hc, lc);
+  }
+  const atr = new Array(data.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += tr[i];
+  atr[period - 1] = sum / period;
+  for (let i = period; i < data.length; i++) {
+    atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period;
+  }
+  return atr;
+}
+
+function calcRegimes(data) {
+  const sma50 = calcSMA(data, 50);
+  const atr14 = calcATR(data, 14);
+  // median ATR for threshold
+  const validATR = atr14.filter(v => v !== null);
+  const medATR = median(validATR);
+
+  return data.map((d, i) => {
+    if (sma50[i] === null || atr14[i] === null) return 'N/A';
+    const trend = d.close > sma50[i] ? 'BULL' : 'BEAR';
+    const vol = atr14[i] > medATR ? 'HIGH' : 'LOW';
+    return trend + '+' + vol;
+  });
+}
+
+/* ─── STREAK DETECTION (Module A) ───────────────────────────── */
+function analyzeStreaks(data, maxHorizon = 7) {
+  const classified = classifyAll(data);
+  const results = {}; // key: "2U", "3D", etc.
+
+  for (let i = 0; i < classified.length; i++) {
+    const t = classified[i].type;
+    if (t === 'J') continue;
+    let streakLen = 1;
+    while (i - streakLen >= 0 && classified[i - streakLen].type === t) streakLen++;
+
+    const key = streakLen + t;
+    // check exact streak: i-streakLen must be different type or start of data
+    const isExact = (i - streakLen < 0) || classified[i - streakLen].type !== t;
+    if (!isExact) continue;
+
+    if (!results[key]) results[key] = { dir: t, len: streakLen, samples: [] };
+
+    const entry = { date: classified[i].date, entryPrice: classified[i].close, returns: {}, isRecent: false };
+    for (let k = 1; k <= maxHorizon; k++) {
+      if (i + k < classified.length) {
+        entry.returns[k] = ((classified[i + k].close - classified[i].close) / classified[i].close) * 100;
+      }
+    }
+    results[key].samples.push(entry);
+  }
+  return results;
+}
+
+function computeStreakStats(streakData, recencyCutoff) {
+  const stats = [];
+  for (const [key, info] of Object.entries(streakData)) {
+    const { dir, len, samples } = info;
+    if (samples.length < 3) continue;
+
+    // mark recent
+    samples.forEach(s => {
+      s.isRecent = new Date(s.date) >= recencyCutoff;
+    });
+
+    const ret1 = samples.filter(s => s.returns[1] !== undefined).map(s => s.returns[1]);
+    const ret2 = samples.filter(s => s.returns[2] !== undefined).map(s => s.returns[2]);
+    const ret3 = samples.filter(s => s.returns[3] !== undefined).map(s => s.returns[3]);
+
+    const pUp1 = pct(ret1.filter(r => r > 0).length, ret1.length);
+    const pUp2 = pct(ret2.filter(r => r > 0).length, ret2.length);
+    const pUp3 = pct(ret3.filter(r => r > 0).length, ret3.length);
+
+    // freshness
+    const recentSamples = samples.filter(s => s.isRecent);
+    const recentRet1 = recentSamples.filter(s => s.returns[1] !== undefined).map(s => s.returns[1]);
+    const wrRecent = recentRet1.length > 0 ? pct(recentRet1.filter(r => r > 0).length, recentRet1.length) : null;
+    const freshness = calcFreshness(pUp1, wrRecent, recentRet1.length);
+
+    // z-test for statistical significance
+    const zTest1 = zTestProportion(pUp1, ret1.length);
+    const zTest2 = zTestProportion(pUp2, ret2.length);
+    const zTest3 = zTestProportion(pUp3, ret3.length);
+
+    stats.push({
+      key, dir, len,
+      n: samples.length,
+      pUp1, pUp2, pUp3,
+      meanRet: mean(ret1), medRet: median(ret1),
+      wrRecent, nRecent: recentRet1.length,
+      freshness,
+      zScore: zTest1.z, pValue: zTest1.pValue,
+      zScore2: zTest2.z, pValue2: zTest2.pValue,
+      zScore3: zTest3.z, pValue3: zTest3.pValue,
+      samples
+    });
+  }
+  stats.sort((a, b) => a.dir === b.dir ? a.len - b.len : (a.dir === 'U' ? -1 : 1));
+  return stats;
+}
+
+/* ─── THRESHOLD PROBABILITY (Module B) ──────────────────────── */
+function computeThresholds(samples, thresholds = [0.5, 1, 2, 3, 5], horizons = [1, 2, 3, 5, 7]) {
+  const result = [];
+  for (const thr of thresholds) {
+    const row = { threshold: thr };
+    for (const h of horizons) {
+      const valid = samples.filter(s => s.returns[h] !== undefined);
+      row['h' + h] = valid.length > 0 ? pct(valid.filter(s => s.returns[h] >= thr).length, valid.length) : null;
+      row['n' + h] = valid.length;
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+/* ─── PATTERN SEQUENCES (Module C) ──────────────────────────── */
+function analyzePatterns(data, patternLen, maxHorizon = 7, regimeFilter = 'all') {
+  const classified = classifyAll(data);
+  const regimes = calcRegimes(data);
+  const results = {};
+
+  for (let i = patternLen - 1; i < classified.length - 1; i++) {
+    // build pattern string
+    let pat = '';
+    for (let j = i - patternLen + 1; j <= i; j++) pat += classified[j].type;
+
+    // regime filter
+    if (regimeFilter !== 'all' && regimes[i] !== regimeFilter) continue;
+
+    if (!results[pat]) results[pat] = { pattern: pat, samples: [] };
+
+    const entry = {
+      date: classified[i].date,
+      entryPrice: classified[i].close,
+      returns: {},
+      regime: regimes[i],
+      isRecent: false,
+    };
+    for (let k = 1; k <= maxHorizon; k++) {
+      if (i + k < classified.length) {
+        entry.returns[k] = ((classified[i + k].close - classified[i].close) / classified[i].close) * 100;
+      }
+    }
+    results[pat].samples.push(entry);
+  }
+  return results;
+}
+
+function computePatternStats(patternData, recencyCutoff, minSamples = 3) {
+  const stats = [];
+  for (const [pat, info] of Object.entries(patternData)) {
+    const { samples } = info;
+    if (samples.length < minSamples) continue;
+
+    samples.forEach(s => { s.isRecent = new Date(s.date) >= recencyCutoff; });
+
+    const ret1 = samples.filter(s => s.returns[1] !== undefined).map(s => s.returns[1]);
+    const ret2 = samples.filter(s => s.returns[2] !== undefined).map(s => s.returns[2]);
+    const ret3 = samples.filter(s => s.returns[3] !== undefined).map(s => s.returns[3]);
+
+    if (ret1.length === 0) continue;
+
+    const wr = pct(ret1.filter(r => r > 0).length, ret1.length);
+    const pUp2 = ret2.length > 0 ? pct(ret2.filter(r => r > 0).length, ret2.length) : null;
+    const pUp3 = ret3.length > 0 ? pct(ret3.filter(r => r > 0).length, ret3.length) : null;
+
+    const recentSamples = samples.filter(s => s.isRecent);
+    const recentRet1 = recentSamples.filter(s => s.returns[1] !== undefined).map(s => s.returns[1]);
+    const wrRecent = recentRet1.length > 0 ? pct(recentRet1.filter(r => r > 0).length, recentRet1.length) : null;
+    const nRecent = recentRet1.length;
+    const freshness = calcFreshness(wr, wrRecent, nRecent);
+
+    // count bearish candles in pattern
+    const bearCount = (pat.match(/D/g) || []).length;
+
+    // z-test for statistical significance
+    const zTest = zTestProportion(wr, ret1.length);
+
+    stats.push({
+      pattern: pat,
+      n: samples.length,
+      wr, pUp2, pUp3,
+      meanRet: mean(ret1), medRet: median(ret1),
+      p10: percentile(ret1, 10), p50: percentile(ret1, 50), p90: percentile(ret1, 90),
+      sharpe: sharpe(ret1),
+      wrRecent, nRecent, freshness,
+      bearCount,
+      zScore: zTest.z, pValue: zTest.pValue,
+      samples,
+    });
+  }
+  return stats;
+}
+
+/* ─── FRESHNESS SCORE (Module F) ────────────────────────────── */
+function calcFreshness(wrGlobal, wrRecent, nRecent) {
+  const C = RECENCY_CONFIG;
+  if (wrRecent === null || nRecent < C.minSamplesJudge) return { score: 0, label: 'NEUTRO', icon: '⚪' };
+  const delta = wrRecent - wrGlobal;
+  if (nRecent >= C.minSamplesStrong && delta > C.thresholdConfirmed) return { score: 2, label: 'RAFFORZATO', icon: '🟢🟢' };
+  if (Math.abs(delta) <= C.thresholdConfirmed) return { score: 1, label: 'CONFERMATO', icon: '🟢' };
+  if (nRecent >= C.minSamplesStrong && wrRecent < C.thresholdDecayedRecent && wrGlobal >= C.thresholdDecayed)
+    return { score: -2, label: 'DECADUTO', icon: '🔴' };
+  if (delta < -C.thresholdConfirmed) return { score: -1, label: 'INDEBOLITO', icon: '🟡' };
+  return { score: 1, label: 'CONFERMATO', icon: '🟢' };
+}
+
+function freshnessClass(f) {
+  if (f.score === 2) return 'f2';
+  if (f.score === 1) return 'f1';
+  if (f.score === 0) return 'f0';
+  if (f.score === -1) return 'fm1';
+  return 'fm2';
+}
+
+/* ─── RECENCY CUTOFF ────────────────────────────────────────── */
+function getRecencyCutoff(data, tf) {
+  const last = new Date(data[data.length - 1].date);
+  const days = tf === 'weekly' ? RECENCY_CONFIG.windowWeeks * 7 : RECENCY_CONFIG.windowDays;
+  return new Date(last.getTime() - days * 86400000);
+}
+
+/* ─── RELIABILITY BADGE ─────────────────────────────────────── */
+function reliabilityBadge(n) {
+  if (n >= 30) return '<span class="reliability ok" title="≥30 campioni">✓</span>';
+  if (n >= 15) return '<span class="reliability warn" title="15-29 campioni">⚠</span>';
+  return '<span class="reliability low" title="<15 campioni">⚠</span>';
+}
+
+/* ─── HEATMAP CELL CLASS ────────────────────────────────────── */
+function heatClass(v) {
+  if (v === null) return 'heat-neutral';
+  if (v >= 60) return 'heat-green';
+  if (v <= 40) return 'heat-red';
+  if (v >= 55) return 'heat-yellow';
+  return 'heat-neutral';
+}
+
+function heatClassRet(v) {
+  if (v > 0.5) return 'heat-green';
+  if (v < -0.5) return 'heat-red';
+  return 'heat-neutral';
+}
+
+/* ─── SORTABLE TABLES ───────────────────────────────────────── */
+function makeSortable(tableEl) {
+  const ths = tableEl.querySelectorAll('thead th');
+  ths.forEach((th, col) => {
+    th.addEventListener('click', () => {
+      const tbody = tableEl.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const asc = !th.classList.contains('sorted-asc');
+
+      ths.forEach(t => { t.classList.remove('sorted-asc', 'sorted-desc'); });
+      th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+
+      rows.sort((a, b) => {
+        let va = a.cells[col]?.getAttribute('data-sort') ?? a.cells[col]?.textContent ?? '';
+        let vb = b.cells[col]?.getAttribute('data-sort') ?? b.cells[col]?.textContent ?? '';
+        const na = parseFloat(va), nb = parseFloat(vb);
+        if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+        return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDERING
+   ═══════════════════════════════════════════════════════════════ */
+
+function getData() {
+  return STATE.tf === 'daily' ? STATE.dailyData : STATE.weeklyData;
+}
+
+/* ─── RENDER SITUATION PANEL ────────────────────────────────── */
+function renderSituation() {
+  const data = getData();
+  if (!data || data.length < 5) return;
+  const classified = classifyAll(data);
+  const regimes = calcRegimes(data);
+  const last4 = classified.slice(-4).map(c => c.type).join('-');
+  const last3 = classified.slice(-3).map(c => c.type).join('-');
+  const regime = regimes[regimes.length - 1] || 'N/A';
+  const lastDate = data[data.length - 1].date;
+  const lastClose = data[data.length - 1].close;
+
+  // find pattern stats
+  const cutoff = getRecencyCutoff(data, STATE.tf);
+  const patterns = analyzePatterns(data, 3, 7, 'all');
+  const allStats = computePatternStats(patterns, cutoff);
+  const match = allStats.find(s => s.pattern === last3);
+
+  const panel = document.getElementById('sitPanel');
+  const content = document.getElementById('sitContent');
+
+  if (match) {
+    const isDecayed = match.freshness.score <= -2;
+    panel.className = 'situation-panel fade-up' + (isDecayed ? ' decayed' : '');
+    const wrColor = match.wr >= 55 ? 'green' : match.wr <= 45 ? 'red' : 'yellow';
+    const sigInfo = match.pValue !== undefined ? match.pValue : 1;
+    const sigText = sigInfo < 0.01 ? 'Altamente significativo ★★★' : sigInfo < 0.05 ? 'Significativo ★★' : sigInfo < 0.10 ? 'Marginale ★' : 'Non significativo';
+    const sigColor = sigInfo < 0.05 ? 'green' : sigInfo < 0.10 ? 'yellow' : 'red';
+    content.innerHTML = `
+      <div class="sit-block">
+        <div class="sit-label">Sequenza (3)</div>
+        <div class="sit-value" style="letter-spacing:3px">${last3.split('').join(' · ')}</div>
+        <div class="sit-sub">Seq. 4: ${last4} · ${lastDate} · $${lastClose.toLocaleString()}</div>
+      </div>
+      <div class="sit-block">
+        <div class="sit-label">WR Prossima Barra</div>
+        <div class="sit-value ${wrColor}">${fmtPct(match.wr)}</div>
+        <div class="sit-sub">su ${match.n} campioni ${reliabilityBadge(match.n)}</div>
+      </div>
+      <div class="sit-block">
+        <div class="sit-label">Significatività Statistica</div>
+        <div class="sit-value ${sigColor}" style="font-size:16px">p = ${fmtPval(sigInfo)}</div>
+        <div class="sit-sub">${sigText} (z = ${match.zScore !== undefined ? match.zScore.toFixed(2) : '—'})</div>
+      </div>
+      <div class="sit-block">
+        <div class="sit-label">Persistenza</div>
+        <div class="sit-value" style="font-size:16px">+2: ${match.pUp2 !== null ? fmtPct(match.pUp2) : '—'} · +3: ${match.pUp3 !== null ? fmtPct(match.pUp3) : '—'}</div>
+      </div>
+      <div class="sit-block">
+        <div class="sit-label">Percentili Rendimento</div>
+        <div class="sit-value" style="font-size:14px">
+          <span class="red">P10 ${fmtRet(match.p10)}</span> ·
+          P50 ${fmtRet(match.p50)} ·
+          <span class="green">P90 ${fmtRet(match.p90)}</span>
+        </div>
+      </div>
+      <div class="sit-block">
+        <div class="sit-label">Regime</div>
+        <div class="sit-value" style="font-size:14px">${regime}</div>
+      </div>
+      <div class="sit-block">
+        <div class="sit-label">Freschezza</div>
+        <div class="tooltip-wrap">
+          <span class="freshness-badge ${freshnessClass(match.freshness)}">${match.freshness.icon} ${match.freshness.label}</span>
+          <span class="tip">Storico: WR ${fmtPct(match.wr)} su ${match.n} · Ultimi 6m: WR ${match.wrRecent !== null ? fmtPct(match.wrRecent) : '—'} su ${match.nRecent} · Δ = ${match.wrRecent !== null ? fmtRet(match.wrRecent - match.wr).replace('%','pp') : '—'}</span>
+        </div>
+      </div>
+    `;
+  } else {
+    panel.className = 'situation-panel fade-up';
+    content.innerHTML = `
+      <div class="sit-block">
+        <div class="sit-label">Sequenza</div>
+        <div class="sit-value">${last3.split('').join(' · ')}</div>
+        <div class="sit-sub">Nessun campione trovato per questa sequenza</div>
+      </div>
+    `;
+  }
+}
+
+/* ─── RENDER MODULE A ───────────────────────────────────────── */
+function renderModA() {
+  const data = getData();
+  if (!data) return;
+  const cutoff = getRecencyCutoff(data, STATE.tf);
+  const streaks = analyzeStreaks(data);
+  const stats = computeStreakStats(streaks, cutoff);
+
+  let html = `<table><thead><tr>
+    <th>Streak</th><th>Dir</th><th>N</th>
+    <th>P(Up) +1</th><th>p-val</th><th>Sig.</th>
+    <th>P(Up) +2</th><th>P(Up) +3</th>
+    <th>Rend. Medio</th><th>Rend. Med.</th><th>Fresc.</th>
+  </tr></thead><tbody>`;
+
+  for (const s of stats) {
+    if (STATE.hideDecayed && s.freshness.score <= -2) continue;
+    if (STATE.onlySignificant && s.pValue > STATE.alphaLevel) continue;
+    const decayed = s.freshness.score <= -2;
+    const notSig = s.pValue > STATE.alphaLevel;
+    let rowCls = '';
+    if (decayed && notSig) rowCls = ' class="decayed-row not-significant"';
+    else if (decayed) rowCls = ' class="decayed-row"';
+    else if (notSig) rowCls = ' class="not-significant"';
+    html += `<tr${rowCls}>
+      <td class="pattern-cell">${s.key}</td>
+      <td>${s.dir === 'U' ? '🟩' : '🟥'}</td>
+      <td class="num" data-sort="${s.n}">${s.n} ${reliabilityBadge(s.n)}</td>
+      <td class="num wr-cell ${heatClass(s.pUp1)}" data-sort="${s.pUp1.toFixed(1)}">${fmtPct(s.pUp1)}</td>
+      <td class="num pval-cell ${sigClass(s.pValue)}" data-sort="${s.pValue.toFixed(4)}">${fmtPval(s.pValue)}</td>
+      <td class="num ${sigClass(s.pValue)}" data-sort="${s.pValue.toFixed(4)}"><span class="sig-stars">${sigLabel(s.pValue)}</span></td>
+      <td class="num ${heatClass(s.pUp2)}" data-sort="${s.pUp2.toFixed(1)}">${fmtPct(s.pUp2)}</td>
+      <td class="num ${heatClass(s.pUp3)}" data-sort="${s.pUp3.toFixed(1)}">${fmtPct(s.pUp3)}</td>
+      <td class="num ${heatClassRet(s.meanRet)}" data-sort="${s.meanRet.toFixed(3)}">${fmtRet(s.meanRet)}</td>
+      <td class="num ${heatClassRet(s.medRet)}" data-sort="${s.medRet.toFixed(3)}">${fmtRet(s.medRet)}</td>
+      <td><div class="tooltip-wrap"><span class="fresh-icon">${s.freshness.icon}</span><span class="tip">${s.freshness.label} — Storico: ${fmtPct(s.pUp1)} · 6m: ${s.wrRecent !== null ? fmtPct(s.wrRecent) : '—'} (n=${s.nRecent})</span></div></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('tableA').innerHTML = html;
+  makeSortable(document.getElementById('tableA').querySelector('table'));
+}
+
+/* ─── RENDER MODULE B ───────────────────────────────────────── */
+function renderModB() {
+  const data = getData();
+  if (!data) return;
+  const streaks = analyzeStreaks(data);
+  const keys = Object.keys(streaks).sort();
+
+  // populate selector
+  const sel = document.getElementById('streakSelectB');
+  const prev = sel.value;
+  sel.innerHTML = keys.map(k => `<option value="${k}" ${k === prev ? 'selected' : ''}>${k} (n=${streaks[k].samples.length})</option>`).join('');
+
+  const chosen = sel.value || keys[0];
+  if (!chosen || !streaks[chosen]) {
+    document.getElementById('tableB').innerHTML = '<p style="color:var(--text-2)">Nessun dato</p>';
+    return;
+  }
+
+  const thresholds = computeThresholds(streaks[chosen].samples);
+  const horizons = [1, 2, 3, 5, 7];
+
+  let html = `<table><thead><tr><th>Soglia ≥</th>`;
+  horizons.forEach(h => { html += `<th>${h} ${STATE.tf === 'daily' ? 'gg' : 'sett'}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  for (const row of thresholds) {
+    html += `<tr><td class="num" style="font-weight:600">+${row.threshold}%</td>`;
+    horizons.forEach(h => {
+      const v = row['h' + h];
+      const n = row['n' + h];
+      html += `<td class="num ${v !== null ? heatClass(v) : ''}" data-sort="${v !== null ? v.toFixed(1) : '-1'}">${v !== null ? fmtPct(v) : '—'}<br><span style="font-size:9px;color:var(--text-2)">n=${n}</span></td>`;
+    });
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('tableB').innerHTML = html;
+  makeSortable(document.getElementById('tableB').querySelector('table'));
+}
+
+/* ─── RENDER MODULE C ───────────────────────────────────────── */
+function renderModC() {
+  const data = getData();
+  if (!data) return;
+  const cutoff = getRecencyCutoff(data, STATE.tf);
+  const patterns = analyzePatterns(data, STATE.patternLen, 7, 'all');
+  const stats = computePatternStats(patterns, cutoff);
+  stats.sort((a, b) => b.wr - a.wr);
+
+  renderPatternTable(stats, 'tableC');
+}
+
+/* ─── RENDER MODULE D ───────────────────────────────────────── */
+function renderModD() {
+  const data = getData();
+  if (!data) return;
+  const cutoff = getRecencyCutoff(data, STATE.tf);
+  const regime = STATE.regimeFilter === 'all' ? 'all' : STATE.regimeFilter;
+  const patterns = analyzePatterns(data, STATE.patternLen, 7, regime);
+  const stats = computePatternStats(patterns, cutoff);
+  stats.sort((a, b) => b.wr - a.wr);
+
+  if (stats.length === 0) {
+    document.getElementById('tableD').innerHTML = '<p style="color:var(--text-2);padding:20px">Campioni insufficienti per il regime selezionato. Prova con "Tutti".</p>';
+    return;
+  }
+  renderPatternTable(stats, 'tableD');
+}
+
+/* ─── RENDER MODULE E ───────────────────────────────────────── */
+function renderModE() {
+  const data = getData();
+  if (!data) return;
+  const cutoff = getRecencyCutoff(data, STATE.tf);
+
+  // collect all pattern lengths
+  let allStats = [];
+  for (let len = 2; len <= 4; len++) {
+    const patterns = analyzePatterns(data, len, 7, 'all');
+    const stats = computePatternStats(patterns, cutoff, 15);
+    allStats = allStats.concat(stats);
+  }
+
+  // apply significance filter to rankings
+  let filtered = allStats;
+  if (STATE.onlySignificant) {
+    filtered = allStats.filter(s => s.pValue <= STATE.alphaLevel);
+  }
+
+  // Top WR
+  const topWR = [...filtered].sort((a, b) => b.wr - a.wr).slice(0, 10);
+  renderRankTable(topWR, 'tableE_wr', 'wr');
+
+  // Top Sharpe
+  const topSharpe = [...filtered].sort((a, b) => b.sharpe - a.sharpe).slice(0, 10);
+  renderRankTable(topSharpe, 'tableE_sharpe', 'sharpe');
+
+  // Top Mean Reversion (bearish patterns with highest P(Up))
+  const topMR = [...filtered].filter(s => s.bearCount >= 2).sort((a, b) => b.wr - a.wr).slice(0, 10);
+  renderRankTable(topMR, 'tableE_mr', 'wr');
+}
+
+/* ─── RENDER MODULE F ───────────────────────────────────────── */
+function renderModF() {
+  const data = getData();
+  if (!data) return;
+  const cutoff = getRecencyCutoff(data, STATE.tf);
+
+  let allStats = [];
+  for (let len = 2; len <= 4; len++) {
+    const patterns = analyzePatterns(data, len, 7, 'all');
+    const stats = computePatternStats(patterns, cutoff, 3);
+    allStats = allStats.concat(stats);
+  }
+  allStats.sort((a, b) => a.freshness.score - b.freshness.score);
+
+  let html = `<table><thead><tr>
+    <th>Pattern</th><th>N Tot</th><th>WR Storico</th><th>p-val</th><th>Sig.</th>
+    <th>N 6m</th><th>WR 6m</th><th>Δ WR</th>
+    <th>Score</th><th>Status</th>
+  </tr></thead><tbody>`;
+
+  for (const s of allStats) {
+    if (STATE.hideDecayed && s.freshness.score <= -2) continue;
+    if (STATE.onlySignificant && s.pValue > STATE.alphaLevel) continue;
+    const delta = s.wrRecent !== null ? s.wrRecent - s.wr : null;
+    const deltaClass = delta !== null ? (delta > 5 ? 'heat-green' : delta < -5 ? 'heat-red' : 'heat-neutral') : '';
+    const decayed = s.freshness.score <= -2;
+    const notSig = s.pValue > STATE.alphaLevel;
+    let rowCls = '';
+    if (decayed && notSig) rowCls = ' class="decayed-row not-significant"';
+    else if (decayed) rowCls = ' class="decayed-row"';
+    else if (notSig) rowCls = ' class="not-significant"';
+
+    html += `<tr${rowCls}>
+      <td class="pattern-cell">${s.pattern.split('').join('-')}</td>
+      <td class="num" data-sort="${s.n}">${s.n}</td>
+      <td class="num ${heatClass(s.wr)}" data-sort="${s.wr.toFixed(1)}">${fmtPct(s.wr)}</td>
+      <td class="num pval-cell ${sigClass(s.pValue)}" data-sort="${s.pValue.toFixed(4)}">${fmtPval(s.pValue)}</td>
+      <td class="num ${sigClass(s.pValue)}" data-sort="${s.pValue.toFixed(4)}"><span class="sig-stars">${sigLabel(s.pValue)}</span></td>
+      <td class="num" data-sort="${s.nRecent}">${s.nRecent}</td>
+      <td class="num ${s.wrRecent !== null ? heatClass(s.wrRecent) : ''}" data-sort="${s.wrRecent !== null ? s.wrRecent.toFixed(1) : '-999'}">${s.wrRecent !== null ? fmtPct(s.wrRecent) : '—'}</td>
+      <td class="num ${deltaClass}" data-sort="${delta !== null ? delta.toFixed(1) : '0'}">${delta !== null ? (delta >= 0 ? '+' : '') + delta.toFixed(1) + 'pp' : '—'}</td>
+      <td class="num" data-sort="${s.freshness.score}">${s.freshness.score}</td>
+      <td><span class="freshness-badge ${freshnessClass(s.freshness)}">${s.freshness.icon} ${s.freshness.label}</span></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('tableF').innerHTML = html;
+  makeSortable(document.getElementById('tableF').querySelector('table'));
+}
+
+/* ─── SHARED TABLE RENDERERS ────────────────────────────────── */
+function renderPatternTable(stats, containerId) {
+  let html = `<table><thead><tr>
+    <th>Pattern</th><th>N</th><th>WR</th><th>p-val</th><th>Sig.</th>
+    <th>P(Up)+2</th><th>P(Up)+3</th>
+    <th>Rend.μ</th><th>Rend.Med</th>
+    <th>P10</th><th>P50</th><th>P90</th>
+    <th>Sharpe</th><th>Fresc.</th>
+  </tr></thead><tbody>`;
+
+  for (const s of stats) {
+    if (STATE.hideDecayed && s.freshness.score <= -2) continue;
+    if (STATE.onlySignificant && s.pValue > STATE.alphaLevel) continue;
+    const decayed = s.freshness.score <= -2;
+    const notSig = s.pValue > STATE.alphaLevel;
+    let rowCls = '';
+    if (decayed && notSig) rowCls = ' class="decayed-row not-significant"';
+    else if (decayed) rowCls = ' class="decayed-row"';
+    else if (notSig) rowCls = ' class="not-significant"';
+    html += `<tr${rowCls}>
+      <td class="pattern-cell">${s.pattern.split('').join('-')}</td>
+      <td class="num" data-sort="${s.n}">${s.n} ${reliabilityBadge(s.n)}</td>
+      <td class="num wr-cell ${heatClass(s.wr)}" data-sort="${s.wr.toFixed(1)}">${fmtPct(s.wr)}</td>
+      <td class="num pval-cell ${sigClass(s.pValue)}" data-sort="${s.pValue.toFixed(4)}">${fmtPval(s.pValue)}</td>
+      <td class="num ${sigClass(s.pValue)}" data-sort="${s.pValue.toFixed(4)}"><span class="sig-stars">${sigLabel(s.pValue)}</span></td>
+      <td class="num ${s.pUp2 !== null ? heatClass(s.pUp2) : ''}" data-sort="${s.pUp2 !== null ? s.pUp2.toFixed(1) : '-1'}">${s.pUp2 !== null ? fmtPct(s.pUp2) : '—'}</td>
+      <td class="num ${s.pUp3 !== null ? heatClass(s.pUp3) : ''}" data-sort="${s.pUp3 !== null ? s.pUp3.toFixed(1) : '-1'}">${s.pUp3 !== null ? fmtPct(s.pUp3) : '—'}</td>
+      <td class="num ${heatClassRet(s.meanRet)}" data-sort="${s.meanRet.toFixed(3)}">${fmtRet(s.meanRet)}</td>
+      <td class="num ${heatClassRet(s.medRet)}" data-sort="${s.medRet.toFixed(3)}">${fmtRet(s.medRet)}</td>
+      <td class="num" data-sort="${s.p10.toFixed(3)}">${fmtRet(s.p10)}</td>
+      <td class="num" data-sort="${s.p50.toFixed(3)}">${fmtRet(s.p50)}</td>
+      <td class="num" data-sort="${s.p90.toFixed(3)}">${fmtRet(s.p90)}</td>
+      <td class="num" data-sort="${s.sharpe.toFixed(3)}">${fmtSharpe(s.sharpe)}</td>
+      <td><div class="tooltip-wrap"><span class="fresh-icon">${s.freshness.icon}</span><span class="tip">${s.freshness.label} — Storico: ${fmtPct(s.wr)} (n=${s.n}) · 6m: ${s.wrRecent !== null ? fmtPct(s.wrRecent) : '—'} (n=${s.nRecent})</span></div></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById(containerId).innerHTML = html;
+  makeSortable(document.getElementById(containerId).querySelector('table'));
+}
+
+function renderRankTable(stats, containerId, sortKey) {
+  let html = `<table><thead><tr>
+    <th>#</th><th>Pattern</th><th>N</th><th>WR</th><th>p-val</th><th>Sig.</th><th>Sharpe</th><th>Rend.μ</th><th>Fresc.</th>
+  </tr></thead><tbody>`;
+
+  stats.forEach((s, i) => {
+    const decayed = s.freshness.score <= -2;
+    const notSig = s.pValue > STATE.alphaLevel;
+    let rowCls = '';
+    if (decayed && notSig) rowCls = ' class="decayed-row not-significant"';
+    else if (decayed) rowCls = ' class="decayed-row"';
+    else if (notSig) rowCls = ' class="not-significant"';
+    html += `<tr${rowCls}>
+      <td class="num">${i + 1}</td>
+      <td class="pattern-cell">${s.pattern.split('').join('-')}</td>
+      <td class="num">${s.n} ${reliabilityBadge(s.n)}</td>
+      <td class="num wr-cell ${heatClass(s.wr)}">${fmtPct(s.wr)}</td>
+      <td class="num pval-cell ${sigClass(s.pValue)}">${fmtPval(s.pValue)}</td>
+      <td class="num ${sigClass(s.pValue)}"><span class="sig-stars">${sigLabel(s.pValue)}</span></td>
+      <td class="num">${fmtSharpe(s.sharpe)}</td>
+      <td class="num ${heatClassRet(s.meanRet)}">${fmtRet(s.meanRet)}</td>
+      <td><span class="freshness-badge ${freshnessClass(s.freshness)}">${s.freshness.icon}</span></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById(containerId).innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER ALL
+   ═══════════════════════════════════════════════════════════════ */
+function renderAll() {
+  renderSituation();
+  renderModA();
+  renderModB();
+  renderModC();
+  renderModD();
+  renderModE();
+  renderModF();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EVENT HANDLERS
+   ═══════════════════════════════════════════════════════════════ */
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.module-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Timeframe
+document.getElementById('tfToggle').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#tfToggle button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  STATE.tf = e.target.dataset.tf;
+  renderAll();
+});
+
+// Pattern length
+document.getElementById('patternLen').addEventListener('change', e => {
+  STATE.patternLen = parseInt(e.target.value);
+  renderModC();
+  renderModD();
+});
+
+// Regime filter
+document.getElementById('regimeFilter').addEventListener('change', e => {
+  STATE.regimeFilter = e.target.value;
+  renderModD();
+});
+
+// Hide decayed
+document.getElementById('hideDecayed').addEventListener('change', e => {
+  STATE.hideDecayed = e.target.checked;
+  renderAll();
+});
+
+// Significance filter
+document.getElementById('onlySignificant').addEventListener('change', e => {
+  STATE.onlySignificant = e.target.checked;
+  renderAll();
+});
+document.getElementById('alphaLevel').addEventListener('change', e => {
+  STATE.alphaLevel = parseFloat(e.target.value);
+  renderAll();
+});
+
+// Streak selector B
+document.getElementById('streakSelectB').addEventListener('change', () => renderModB());
+
+/* ═══════════════════════════════════════════════════════════════
+   DATA LOADING — IndexedDB Cache + Binance API Fetcher
+   ═══════════════════════════════════════════════════════════════ */
+
+const DB_NAME = 'BTC_PatternAnalyzer';
+const DB_VERSION = 1;
+const STORE_NAME = 'ohlcv';
+const BINANCE_BASE = 'https://api.binance.com/api/v3/klines';
+const CHUNK_LIMIT = 1000;
+// BTCUSDT on Binance starts ~2017-08-17
+const DATA_START_MS = new Date('2017-08-17').getTime();
+
+/* ─── IndexedDB helpers ─────────────────────────────────────── */
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function cacheGet(key) {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch { return null; }
+}
+
+async function cacheSet(key, data) {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      store.put({ id: key, data, timestamp: Date.now() });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch { return false; }
+}
+
+async function cacheClear() {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch { return false; }
+}
+
+/* ─── Binance API Fetcher ───────────────────────────────────── */
+function parseBinanceKline(k) {
+  return {
+    date: new Date(k[0]).toISOString().split('T')[0],
+    open: parseFloat(k[1]),
+    high: parseFloat(k[2]),
+    low: parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    volume: parseFloat(k[5])
+  };
+}
+
+async function fetchBinanceChunk(startTime) {
+  const url = `${BINANCE_BASE}?symbol=BTCUSDT&interval=1d&limit=${CHUNK_LIMIT}&startTime=${startTime}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Binance API error: ${res.status}`);
+  const raw = await res.json();
+  return raw.map(parseBinanceKline);
+}
+
+async function fetchAllBinanceDaily(onProgress) {
+  const allCandles = [];
+  let startTime = DATA_START_MS;
+  const now = Date.now();
+  let chunkNum = 0;
+  const totalEstChunks = Math.ceil((now - DATA_START_MS) / (CHUNK_LIMIT * 86400000));
+
+  while (startTime < now) {
+    chunkNum++;
+    if (onProgress) onProgress(chunkNum, totalEstChunks);
+
+    const chunk = await fetchBinanceChunk(startTime);
+    if (chunk.length === 0) break;
+
+    allCandles.push(...chunk);
+
+    // next chunk starts after last candle's date + 1 day
+    const lastDate = new Date(chunk[chunk.length - 1].date);
+    startTime = lastDate.getTime() + 86400000;
+
+    // rate limit courtesy: 200ms between requests
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  // deduplicate by date
+  const seen = new Set();
+  return allCandles.filter(c => {
+    if (seen.has(c.date)) return false;
+    seen.add(c.date);
+    return true;
+  });
+}
+
+/* ─── Weekly Aggregation ────────────────────────────────────── */
+function aggregateWeekly(dailyData) {
+  const weeks = [];
+  let current = null;
+  for (const d of dailyData) {
+    const dt = new Date(d.date);
+    const day = dt.getDay(); // 0=Sun
+    if (!current || (day === 1 && current.count > 0)) {
+      if (current && current.count > 0) weeks.push(current.candle);
+      current = {
+        candle: { date: d.date, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume || 0 },
+        count: 1
+      };
+    } else {
+      current.candle.high = Math.max(current.candle.high, d.high);
+      current.candle.low = Math.min(current.candle.low, d.low);
+      current.candle.close = d.close;
+      current.candle.volume = (current.candle.volume || 0) + (d.volume || 0);
+      current.count++;
+    }
+  }
+  if (current && current.count > 0) weeks.push(current.candle);
+  return weeks;
+}
+
+/* ─── Metadata ──────────────────────────────────────────────── */
+function updateMeta() {
+  const d = STATE.dailyData;
+  const w = STATE.weeklyData;
+  if (d && d.length) {
+    document.getElementById('metaLastDate').textContent = d[d.length - 1].date;
+    document.getElementById('metaDailyCount').textContent = d.length.toLocaleString();
+  }
+  if (w && w.length) {
+    document.getElementById('metaWeeklyCount').textContent = w.length.toLocaleString();
+  }
+}
+
+/* ─── Check cache freshness (stale after 20h) ───────────────── */
+function isCacheFresh(cached) {
+  if (!cached || !cached.timestamp) return false;
+  const age = Date.now() - cached.timestamp;
+  return age < 20 * 3600 * 1000; // 20 hours
+}
+
+/* ─── Export JSON helper ────────────────────────────────────── */
+function downloadJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ─── MAIN LOAD ORCHESTRATOR ────────────────────────────────── */
+async function loadData(forceRefresh = false) {
+  const overlay = document.getElementById('loadingOverlay');
+  const loadingText = document.getElementById('loadingText');
+  overlay.classList.remove('hidden');
+
+  try {
+    /* ── STEP 1: Try local JSON files first ── */
+    if (!forceRefresh) {
+      try {
+        loadingText.textContent = 'Ricerca file JSON locali…';
+        const dailyRes = await fetch('./btc_daily_data.json');
+        if (dailyRes.ok) {
+          STATE.dailyData = await dailyRes.json();
+          loadingText.textContent = 'File daily trovato! Caricamento weekly…';
+          try {
+            const weeklyRes = await fetch('./btc_weekly_data.json');
+            if (weeklyRes.ok) STATE.weeklyData = await weeklyRes.json();
+            else throw new Error('no weekly file');
+          } catch {
+            STATE.weeklyData = aggregateWeekly(STATE.dailyData);
+          }
+          loadingText.textContent = 'Calcolo pattern…';
+          await new Promise(r => setTimeout(r, 50));
+          updateMeta(); renderAll();
+          overlay.classList.add('hidden');
+          return;
+        }
+      } catch { /* no local files, continue */ }
+    }
+
+    /* ── STEP 2: Try IndexedDB cache ── */
+    if (!forceRefresh) {
+      loadingText.textContent = 'Ricerca cache locale (IndexedDB)…';
+      const cached = await cacheGet('btc_daily');
+      if (cached && cached.data && cached.data.length > 100 && isCacheFresh(cached)) {
+        STATE.dailyData = cached.data;
+        loadingText.textContent = `Cache trovata (${cached.data.length} candele, ${new Date(cached.timestamp).toLocaleString()})`;
+        await new Promise(r => setTimeout(r, 300));
+
+        const cachedW = await cacheGet('btc_weekly');
+        STATE.weeklyData = (cachedW && cachedW.data) ? cachedW.data : aggregateWeekly(STATE.dailyData);
+
+        loadingText.textContent = 'Calcolo pattern…';
+        await new Promise(r => setTimeout(r, 50));
+        updateMeta(); renderAll();
+        overlay.classList.add('hidden');
+        return;
+      }
+    }
+
+    /* ── STEP 3: Fetch from Binance API ── */
+    loadingText.textContent = 'Download da Binance API…';
+    const dailyData = await fetchAllBinanceDaily((chunk, total) => {
+      const pct = Math.min(100, Math.round((chunk / total) * 100));
+      loadingText.textContent = `Download OHLCV da Binance… ${pct}% (chunk ${chunk}/${total})`;
+    });
+
+    if (dailyData.length < 100) throw new Error('Dati insufficienti ricevuti da Binance');
+
+    STATE.dailyData = dailyData;
+    STATE.weeklyData = aggregateWeekly(dailyData);
+
+    /* ── STEP 4: Save to IndexedDB cache ── */
+    loadingText.textContent = 'Salvataggio in cache locale…';
+    await cacheSet('btc_daily', dailyData);
+    await cacheSet('btc_weekly', STATE.weeklyData);
+
+    loadingText.textContent = 'Calcolo pattern…';
+    await new Promise(r => setTimeout(r, 50));
+    updateMeta(); renderAll();
+    overlay.classList.add('hidden');
+
+  } catch (err) {
+    loadingText.innerHTML = `
+      <span style="color:var(--red)">Errore: ${err.message}</span><br>
+      <span style="font-size:12px;color:var(--text-2)">
+        Possibili cause:<br>
+        • Connessione Internet assente (necessaria per il primo download)<br>
+        • Binance API non raggiungibile dalla tua rete<br>
+        • File btc_daily_data.json non presente nella cartella locale
+      </span><br><br>
+      <button onclick="loadData(true)" style="
+        background:var(--accent);color:var(--bg-0);border:none;padding:8px 20px;
+        border-radius:6px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px;
+      ">⟳ Riprova</button>
+    `;
+  }
+}
+
+/* ─── TOOLBAR ACTIONS ───────────────────────────────────────── */
+function refreshData() { loadData(true); }
+
+function exportDailyJSON() {
+  if (STATE.dailyData) downloadJSON(STATE.dailyData, 'btc_daily_data.json');
+}
+function exportWeeklyJSON() {
+  if (STATE.weeklyData) downloadJSON(STATE.weeklyData, 'btc_weekly_data.json');
+}
+async function clearCache() {
+  await cacheClear();
+  alert('Cache cancellata. Il prossimo caricamento scaricherà dati freschi.');
+}
+
+loadData();
+</script>
+</body>
+</html>
