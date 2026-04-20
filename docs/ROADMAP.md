@@ -141,12 +141,138 @@ Due approcci possibili:
 
 ---
 
-## Sinergia tra le due linee
+## Linea 3 — Test Suite di Regressione
 
-Le due linee NON sono alternative: sono **complementari**.
+### Obiettivo
+Introdurre un'infrastruttura di test automatizzati che copra l'engine statistico, la classificazione candele, il pattern scanner, il data loader e gli entry point dei moduli UI, in modo da rilevare immediatamente qualunque regressione introdotta da modifiche successive (refactoring, estensioni, fix). L'idea di fondo è che ogni numero mostrato in tabella deve essere riproducibile da un test, e ogni funzione dell'engine deve avere un contratto verificabile.
+
+### Motivazione
+Il progetto ha ormai superato la soglia della complessità gestibile "a vista": l'engine combina z-test binomiale, percentili, classificazione U/D/J con soglie di corpo, SMA/ATR, regime detection, streak analysis, pattern scanner multi-lunghezza e validazione di freschezza a finestra mobile. Questi calcoli sono **interdipendenti** (es. il regime filtra i pattern, che a loro volta alimentano la classifica globale) e **non verificabili a occhio**: una modifica silenziosa a `candles.js` — ad esempio un cambio della soglia `bodyRatio` per la classificazione J — può propagarsi su tutti i moduli senza produrre errori visibili, cambiando però il significato statistico dei risultati.
+
+Senza test:
+- Un refactoring dell'engine richiede una verifica manuale lenta e incompleta.
+- Le modifiche esplorative (es. sperimentare una definizione alternativa di candela J) sono rischiose perché non si può tornare facilmente al comportamento precedente.
+- Non esiste un "golden output" di riferimento: se due versioni del tool producono tabelle diverse, non si sa quale sia quella corretta.
+- L'integrazione di contributi esterni (o di un agente AI) diventa pericolosa, perché non c'è un cancello automatico che segnali le rotture.
+
+### Principi di design
+- **Zero framework in produzione, test-only dependencies isolati**: in linea con il vincolo architetturale del progetto, la runtime dell'app resta vanilla ES Modules. I test vivono in una cartella separata (`tests/`) e girano con un runner in `devDependencies` (Vitest o node:test nativo), mai caricato dal browser.
+- **Fast, deterministic, offline**: i test non devono dipendere da Binance API né da IndexedDB. Il data loader va testato contro fixture JSON locali e mock del fetch.
+- **Unit prima di integration**: la piramide classica. L'engine è puro (input → output), quindi testabile al 100% con unit test. La UI richiede meno coverage, solo smoke test.
+- **Golden tests sul dominio**: i risultati numerici di riferimento (WR, p-value, z-score di pattern noti) vengono congelati in file JSON snapshot rigenerabili esplicitamente.
+
+### Livelli di sviluppo
+
+#### Livello 3.1 — Unit test dell'engine statistico (`engine/stats.js`)
+Verifica diretta delle funzioni pure:
+- Z-test binomiale bilaterale: confronto con valori noti (es. 60/100 successi → z = 2.0, p ≈ 0.0455) e casi limite (0 successi, 100% successi, n = 0).
+- Percentili (P10, P25, P50, P75, P90): su array costruiti ad hoc con mediana nota.
+- Interpolazione ed edge cases (array vuoto, array con un solo elemento, valori duplicati).
+
+Coverage target: **100%** — è il cuore statistico del tool.
+
+#### Livello 3.2 — Test di classificazione candele e indicatori (`engine/candles.js`)
+- Classificazione U/D/J su candele costruite manualmente con body ratio noto ai margini della soglia.
+- SMA(50): confronto con calcolo di riferimento su serie sintetica.
+- ATR(14): verifica della formula Wilder e gestione del warm-up window.
+- Regime detection (BULL/BEAR × HIGH/LOW VOL): matrice di test con tutte e 4 le combinazioni.
+
+#### Livello 3.3 — Test del pattern scanner e streak detection (`engine/patterns.js`)
+- Streak analysis: su serie sintetica con streak noti (es. U-U-U-U-D → streak di 4 U seguita da 1 D) verificare che il conteggio e le probabilità condizionali siano corrette.
+- Pattern scanner: costruire una serie in cui il pattern "D-D-D" appare esattamente K volte e verificare che il contatore restituisca K, con i rendimenti attesi dopo N barre.
+- Filtro per regime: verificare che il filtro non passi pattern fuori regime.
+
+#### Livello 3.4 — Test di freschezza (`engine/freshness.js`)
+- Test della finestra mobile degli ultimi 6 mesi: dataset sintetico con pattern concentrato nei primi anni → freshness score basso.
+- Dataset con pattern costante nel tempo → freshness score alto.
+- Edge case: meno di 6 mesi di dati disponibili.
+
+#### Livello 3.5 — Test del data loader con fetch mockato (`engine/data-loader.js`)
+- Mock di `fetch` (Binance API) per simulare risposte valide, risposte parziali, errori di rete, rate limiting.
+- Mock di IndexedDB (es. `fake-indexeddb`) per verificare che la cache venga scritta, letta, invalidata dopo 20h.
+- Verifica dell'idempotenza: due chiamate ravvicinate non devono raddoppiare le request HTTP.
+- Verifica del merge incrementale quando arrivano nuove candele rispetto al cache.
+
+#### Livello 3.6 — Golden tests / snapshot numerici sui moduli
+Per ogni modulo (A, B, C, D, E, F) si fissa un dataset di riferimento (subset di 500 candele BTC in `tests/fixtures/btc_sample.json`) e si congela l'output completo in uno snapshot JSON. Ogni modifica che alteri i numeri fa fallire il test, costringendo a un'aggiornamento esplicito dello snapshot.
+
+Questo è il livello che fornisce la protezione più forte contro regressioni silenziose: non importa dove sia stata introdotta la modifica (engine, formatter, ordinamento), se i numeri finali cambiano il test segnala la differenza.
+
+#### Livello 3.7 — Smoke test della UI e boot dell'app
+Test end-to-end leggeri (jsdom o Playwright headless):
+- `app.js` carica senza throw su dataset di fixture.
+- Ogni modulo (A → G) monta il proprio pannello nel DOM senza errori.
+- Click sui principali controlli (cambio timeframe, apertura help, export JSON) non generano exception.
+
+Non si testa l'estetica, solo l'assenza di crash.
+
+#### Livello 3.8 — Integrazione CI (GitHub Actions)
+Workflow `.github/workflows/test.yml` che:
+- Esegue la test suite su ogni push e pull request.
+- Blocca il merge su `main` se i test falliscono.
+- Pubblica un badge di stato nel README.
+- Opzionale: report di coverage (c8 / istanbul).
+
+Questo chiude il cerchio: il deploy su GitHub Pages (già attivo) viene condizionato al verde della pipeline.
+
+### Struttura di cartelle proposta
+```
+tests/
+├── unit/
+│   ├── stats.test.js
+│   ├── candles.test.js
+│   ├── patterns.test.js
+│   ├── freshness.test.js
+│   └── data-loader.test.js
+├── integration/
+│   ├── modules.test.js        ← golden snapshot per mod-a..mod-g
+│   └── app-boot.test.js       ← smoke test UI
+├── fixtures/
+│   ├── btc_sample.json        ← subset deterministico di candele
+│   ├── binance-response.json  ← mock HTTP
+│   └── snapshots/             ← output congelati dei moduli
+└── helpers/
+    └── mock-idb.js
+```
+
+### Stack suggerito
+- **Runner**: Vitest (velocissimo, ESM nativo, API compatibile Jest) oppure `node --test` (zero dipendenze, più spartano).
+- **DOM simulato**: jsdom o happy-dom per i smoke test UI.
+- **Mock IndexedDB**: `fake-indexeddb`.
+- **Coverage**: c8 (integrato in Vitest).
+
+Nessuna di queste dipendenze finisce mai nel bundle servito al browser — restano confinate in `devDependencies`.
+
+### Complessità stimata
+- Livello 3.1 (unit stats): 2-3 ore.
+- Livello 3.2 (unit candles): 2-3 ore.
+- Livello 3.3 (unit patterns): 3-4 ore.
+- Livello 3.4 (unit freshness): 1-2 ore.
+- Livello 3.5 (data loader con mock): 3-4 ore.
+- Livello 3.6 (golden tests moduli): 3-5 ore (la difficoltà sta nel costruire la fixture giusta).
+- Livello 3.7 (smoke UI): 2-3 ore.
+- Livello 3.8 (CI GitHub Actions): 1 ora.
+
+**Totale indicativo**: 17-25 ore per coverage completa. MVP utile (3.1 + 3.2 + 3.6 + 3.8) in ~10 ore.
+
+### Limiti e trade-off
+- Introduce una dipendenza di sviluppo (Node + runner) che prima non esisteva. Il progetto a runtime resta però identico: nessun file in `js/` cambia forma, nessun import aggiunto in `index.html`.
+- I golden snapshot richiedono disciplina: quando si aggiorna lo snapshot va capito **perché** è cambiato, altrimenti il meccanismo perde valore.
+- I test non sostituiscono la validazione statistica del dominio (la freschezza, il p-value): verificano che il codice sia coerente con sé stesso, non che il modello sia giusto.
+- Serve decidere una policy: test obbligatori in PR? Coverage minima? Snapshot rigenerabili a piacere o solo con flag esplicito?
+
+### Precondizione
+Prima di scrivere test massivi conviene estrarre eventuali funzioni ancora accoppiate al DOM dentro l'engine verso moduli puri. Se l'engine è già puro (input → output senza side effect) come dalla `STRUCT.md`, questa precondizione è soddisfatta e si può partire dal Livello 3.1.
+
+---
+
+## Sinergia tra le tre linee
+
+Le linee 1 e 2 sono **funzionali** (ampliano ciò che l'utente può fare). La Linea 3 è **infrastrutturale** (protegge ciò che il tool fa già). Sono ortogonali e si rinforzano a vicenda:
 
 - **Linea 2 (grafici nel tool)** = migliora la fase di **scoperta** (analisi esplorativa, capire quali pattern vale la pena approfondire).
 - **Linea 1 (PineScript)** = migliora la fase di **esecuzione** (portare i pattern validati sul campo, con alert e backtest di trading).
+- **Linea 3 (test suite)** = abilita la fase di **evoluzione** (rendere il codice modificabile senza paura, condizione necessaria per far crescere le altre due linee).
 
 Un workflow integrato sarebbe:
 1. Apri l'HTML → esplori i pattern con le tabelle e i grafici.
@@ -155,11 +281,13 @@ Un workflow integrato sarebbe:
 4. Lo carichi su TradingView → imposti un alert → aspetti.
 
 ### Suggerimento di priorità
-Se dovessi scegliere una, direi **Linea 2.1 + 2.2** (grafico candele + visualizzazione pattern): trasforma la percezione del tool dal "foglio Excel avanzato" a "strumento visuale professionale", con impatto immediato sulla comprensibilità. È anche la base su cui costruire gli altri livelli grafici.
+Se dovessi scegliere una linea funzionale, direi **Linea 2.1 + 2.2** (grafico candele + visualizzazione pattern): trasforma la percezione del tool dal "foglio Excel avanzato" a "strumento visuale professionale", con impatto immediato sulla comprensibilità. È anche la base su cui costruire gli altri livelli grafici.
 
 La Linea 1 (PineScript) ha più valore **dopo** che l'utente ha già identificato pattern di cui si fida — quindi arriva naturalmente nella fase 2 del workflow.
 
-Ma entrambe sono valide e possono essere sviluppate in parallelo: non c'è dipendenza tecnica tra le due.
+La **Linea 3 (test suite)** andrebbe idealmente iniziata **prima** di espandere le funzionalità: fissare ora il comportamento corretto dell'engine significa poter poi aggiungere grafici ed export PineScript con la sicurezza che i numeri di base non si muovano. Un MVP minimo (3.1 + 3.6 + 3.8) vale più di tutti gli altri livelli presi singolarmente in termini di rischio/benefit.
+
+Le linee funzionali possono essere sviluppate in parallelo: non c'è dipendenza tecnica tra loro, e la Linea 3 non blocca nessuna delle altre, le rende solo più sicure.
 
 ---
 
@@ -176,5 +304,13 @@ Ma entrambe sono valide e possono essere sviluppate in parallelo: non c'è dipen
 | 2.3 | Istogramma rendimenti | 🔵 Da fare |
 | 2.4 | Heatmap temporale WR | 🔵 Da fare |
 | 2.5 | Sparkline nelle tabelle | 🔵 Da fare |
+| 3.1 | Unit test engine statistico (stats.js) | 🔵 Da fare |
+| 3.2 | Unit test classificazione candele (candles.js) | 🔵 Da fare |
+| 3.3 | Unit test pattern scanner (patterns.js) | 🔵 Da fare |
+| 3.4 | Unit test freschezza (freshness.js) | 🔵 Da fare |
+| 3.5 | Test data loader con fetch/IDB mockati | 🔵 Da fare |
+| 3.6 | Golden snapshot tests sui moduli A–F | 🔵 Da fare |
+| 3.7 | Smoke test UI (boot app + moduli) | 🔵 Da fare |
+| 3.8 | CI GitHub Actions + badge | 🔵 Da fare |
 
 Legenda: 🔵 da fare · 🟡 in corso · 🟢 completato
