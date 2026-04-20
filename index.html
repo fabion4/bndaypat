@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Pattern Analyzer — Analisi Statistica Sequenze</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/help.css">
+<link rel="stylesheet" href="css/charts.css">
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loader">
+    <div style="font-size:28px;font-family:'Outfit',sans-serif;font-weight:700;color:var(--accent)">BTC Pattern Analyzer</div>
+    <div class="loader-bar"><div class="loader-bar-inner"></div></div>
+    <div class="loader-text" id="loadingText">Caricamento dati storici…</div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-brand">
+    <div class="logo">₿</div>
+    <div>
+      <h1>BTC Pattern Analyzer</h1>
+      <div style="font-size:11px;color:var(--text-2);font-family:'Outfit',sans-serif">Analisi statistica sequenze candele</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <div class="meta-pill">Ultimo dato: <span id="metaLastDate">—</span></div>
+    <div class="meta-pill">Candele daily: <span id="metaDailyCount">—</span></div>
+    <div class="meta-pill">Candele weekly: <span id="metaWeeklyCount">—</span></div>
+    <div class="meta-pill" style="display:flex;gap:6px;padding:2px 4px;">
+      <button onclick="refreshData()" title="Aggiorna dati da Binance" style="background:none;border:1px solid var(--border);color:var(--accent);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">⟳ Refresh</button>
+      <button onclick="exportDailyJSON()" title="Scarica btc_daily_data.json" style="background:none;border:1px solid var(--border);color:var(--text-2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">↓ Daily</button>
+      <button onclick="exportWeeklyJSON()" title="Scarica btc_weekly_data.json" style="background:none;border:1px solid var(--border);color:var(--text-2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">↓ Weekly</button>
+      <button onclick="clearCache()" title="Cancella cache IndexedDB" style="background:none;border:1px solid var(--border);color:var(--red);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace;">✕ Cache</button>
+    </div>
+    <button class="help-trigger" onclick="openGlossary()" title="Glossario e aiuto">?</button>
+    <button class="help-trigger" onclick="startTour()" title="Tour guidato" style="font-size:14px;">▶</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<nav class="tabs-bar">
+  <div class="tab-group">
+    <button class="tab active" data-tab="modA">A · Streak</button>
+    <button class="tab" data-tab="modB">B · Soglie</button>
+    <button class="tab" data-tab="modC">C · Pattern</button>
+    <button class="tab" data-tab="modD">D · Regime</button>
+    <button class="tab" data-tab="modE">E · Classifica</button>
+    <button class="tab" data-tab="modF">F · Freschezza</button>
+    <button class="tab" data-tab="modG">G · Grafici</button>
+  </div>
+</nav>
+
+<!-- CONTROLS -->
+<div class="controls-bar">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Timeframe</span>
+    <div class="ctrl-toggle" id="tfToggle">
+      <button class="active" data-tf="daily">Daily</button>
+      <button data-tf="weekly">Weekly</button>
+    </div>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Lungh. pattern</span>
+    <select class="ctrl-select" id="patternLen">
+      <option value="2">2 candele</option>
+      <option value="3" selected>3 candele</option>
+      <option value="4">4 candele</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Regime</span>
+    <select class="ctrl-select" id="regimeFilter">
+      <option value="all">Tutti</option>
+      <option value="BULL+LOW">Bull + Low Vol</option>
+      <option value="BULL+HIGH">Bull + High Vol</option>
+      <option value="BEAR+LOW">Bear + Low Vol</option>
+      <option value="BEAR+HIGH">Bear + High Vol</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label class="ctrl-check">
+      <input type="checkbox" id="hideDecayed">
+      <span class="ctrl-label" style="margin:0">Nascondi decaduti</span>
+    </label>
+  </div>
+  <div class="ctrl-group">
+    <label class="ctrl-check">
+      <input type="checkbox" id="onlySignificant">
+      <span class="ctrl-label" style="margin:0">Solo significativi (p&lt;0.05)</span>
+    </label>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">α</span>
+    <select class="ctrl-select" id="alphaLevel">
+      <option value="0.01">0.01 (★★★)</option>
+      <option value="0.05" selected>0.05 (★★)</option>
+      <option value="0.10">0.10 (★)</option>
+    </select>
+  </div>
+</div>
+
+<!-- SITUAZIONE CORRENTE -->
+<div class="situation-panel fade-up" id="sitPanel">
+  <div class="sit-row" id="sitContent">
+    <div class="sit-block"><div class="sit-label">Caricamento…</div></div>
+  </div>
+</div>
+
+<!-- WELCOME BANNER -->
+<div class="welcome-banner" id="welcomeBanner">
+  <div class="welcome-icon">📊</div>
+  <div class="welcome-text">
+    <h3>Prima volta qui? Questo strumento analizza i pattern statistici di Bitcoin.</h3>
+    <p>Studia le sequenze di candele giornaliere e settimanali per individuare probabilità direzionali ricorrenti. Clicca <strong>ⓘ</strong> accanto a ogni sezione per spiegazioni dettagliate.</p>
+  </div>
+  <div class="welcome-actions">
+    <button class="welcome-btn welcome-btn-tour" onclick="startTour()">▶ Tour guidato</button>
+    <button class="welcome-btn welcome-btn-glossary" onclick="openGlossary()">? Glossario</button>
+    <button class="welcome-btn-dismiss" onclick="dismissWelcome()">Nascondi</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- MODULE A -->
+  <div class="module-panel active" id="modA">
+    <div class="module-title fade-up">Modulo A — Streak Analysis <span class="info-btn" onclick="toggleHelp('helpA')">i</span></div>
+    <div class="help-card" id="helpA">
+      <h4>Come leggere questa tabella</h4>
+      <p>Una <span class="help-term">streak</span> è una serie di candele consecutive nella stessa direzione. Ad esempio, <span class="help-term">3U</span> significa "3 candele rialziste di fila".</p>
+      <p><span class="help-term">p-val</span> = se il mercato fosse casuale (50/50), quante probabilità ci sarebbero di osservare un WR così estremo? Più è basso, più il pattern è reale.</p>
+      <p><span class="help-term">Sig.</span> = ★★★ (p&lt;0.01), ★★ (p&lt;0.05), ★ (p&lt;0.10), — (non significativo).</p>
+      <div class="help-example">Esempio: "3D · WR 65% · n=80 · p=0.004 ★★★" → pattern reale. "5U · WR 70% · n=12 · p=0.18 —" → potrebbe essere solo rumore.</div>
+    </div>
+    <div class="module-desc fade-up fade-up-d1">Probabilità direzionale dopo N candele consecutive nella stessa direzione.</div>
+    <div class="table-wrap fade-up fade-up-d2" id="tableA"></div>
+  </div>
+
+  <!-- MODULE B -->
+  <div class="module-panel" id="modB">
+    <div class="module-title">Modulo B — Probabilità Superamento Soglia <span class="info-btn" onclick="toggleHelp('helpB')">i</span></div>
+    <div class="help-card" id="helpB">
+      <h4>Quante probabilità di guadagnare almeno X%?</h4>
+      <p>Seleziona una streak. La heatmap mostra: righe = soglie di rendimento, colonne = orizzonte temporale. Più verde = più probabile.</p>
+    </div>
+    <div class="module-desc">Probabilità di raggiungere un rendimento ≥ X% entro K barre, dopo una streak direzionale.</div>
+    <div class="heatmap-selector">
+      <span class="ctrl-label">Streak</span>
+      <select class="ctrl-select" id="streakSelectB"></select>
+    </div>
+    <div class="table-wrap" id="tableB"></div>
+  </div>
+
+  <!-- MODULE C -->
+  <div class="module-panel" id="modC">
+    <div class="module-title">Modulo C — Pattern Sequenze Arbitrarie <span class="info-btn" onclick="toggleHelp('helpC')">i</span></div>
+    <div class="help-card" id="helpC">
+      <h4>Tutte le combinazioni U/D/J</h4>
+      <p><span class="help-term">WR</span> = % rialzi dopo il pattern. <span class="help-term">p-val</span> = è statisticamente reale? <span class="help-term">P10/P50/P90</span> = scenari peggiore/tipico/migliore. <span class="help-term">Sharpe</span> = efficienza rendimento/rischio.</p>
+    </div>
+    <div class="module-desc">Tutte le combinazioni U/D/J per la lunghezza selezionata.</div>
+    <div class="table-wrap" id="tableC"></div>
+  </div>
+
+  <!-- MODULE D -->
+  <div class="module-panel" id="modD">
+    <div class="module-title">Modulo D — Analisi per Regime di Mercato <span class="info-btn" onclick="toggleHelp('helpD')">i</span></div>
+    <div class="help-card" id="helpD">
+      <h4>Il contesto cambia tutto</h4>
+      <p><span class="help-term">BULL</span> = prezzo &gt; SMA(50). <span class="help-term">BEAR</span> = prezzo &lt; SMA(50). <span class="help-term">HIGH/LOW</span> = volatilità ATR(14) sopra/sotto la mediana storica. Usa il filtro "Regime" nella barra controlli.</p>
+    </div>
+    <div class="module-desc">Stesse statistiche del Modulo C, filtrate per regime di mercato.</div>
+    <div class="table-wrap" id="tableD"></div>
+  </div>
+
+  <!-- MODULE E -->
+  <div class="module-panel" id="modE">
+    <div class="module-title">Modulo E — Classifica Globale Pattern <span class="info-btn" onclick="toggleHelp('helpE')">i</span></div>
+    <div class="help-card" id="helpE">
+      <h4>I migliori pattern di sempre</h4>
+      <p>🏆 <strong>Top WR</strong> = più alta probabilità di rialzo. ⚡ <strong>Top Sharpe</strong> = miglior rendimento/rischio. 🔄 <strong>Mean Reversion</strong> = pattern ribassisti che rimbalzano. Pattern 🔴 decaduti sono barrati.</p>
+    </div>
+    <div class="module-desc">Top pattern per WR, Sharpe e mean reversion. Minimo 15 campioni.</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:320px;">
+        <h3 style="font-family:'Outfit',sans-serif;font-size:13px;color:var(--accent);margin-bottom:8px;">🏆 Top 10 per Win Rate</h3>
+        <div class="table-wrap" id="tableE_wr"></div>
+      </div>
+      <div style="flex:1;min-width:320px;">
+        <h3 style="font-family:'Outfit',sans-serif;font-size:13px;color:var(--yellow);margin-bottom:8px;">⚡ Top 10 per Sharpe</h3>
+        <div class="table-wrap" id="tableE_sharpe"></div>
+      </div>
+      <div style="flex:1;min-width:320px;">
+        <h3 style="font-family:'Outfit',sans-serif;font-size:13px;color:#7c8cf5;margin-bottom:8px;">🔄 Top 10 Mean Reversion</h3>
+        <div class="table-wrap" id="tableE_mr"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULE F -->
+  <div class="module-panel" id="modF">
+    <div class="module-title">Modulo F — Validazione di Freschezza <span class="info-btn" onclick="toggleHelp('helpF')">i</span></div>
+    <div class="help-card" id="helpF">
+      <h4>Questo pattern funziona ancora?</h4>
+      <p>Confronta WR storico vs ultimi 6 mesi. 🟢🟢 Rafforzato, 🟢 Confermato, ⚪ Neutro, 🟡 Indebolito, 🔴 Decaduto.</p>
+      <p><span class="help-term">Δ WR</span> = differenza in punti percentuali tra WR recente e storico.</p>
+    </div>
+    <div class="module-desc">Confronto WR storico globale vs ultimi 6 mesi.</div>
+    <div class="table-wrap" id="tableF"></div>
+  </div>
+
+  <!-- MODULE G — CHARTS -->
+  <div class="module-panel" id="modG">
+    <div class="module-title">Modulo G — Grafici <span class="info-btn" onclick="toggleHelp('helpG')">i</span></div>
+    <div class="help-card" id="helpG">
+      <h4>Visualizzazione candele e pattern</h4>
+      <p>Il grafico mostra le candele OHLCV colorate per tipo: <span style="color:var(--accent)">verde</span> = rialzista (U), <span style="color:var(--red)">rosso</span> = ribassista (D), <span style="color:var(--yellow)">giallo</span> = doji (J). La linea <span style="color:#7c8cf5">viola</span> è la SMA(50). La zona con sfondo leggermente illuminato è la finestra degli ultimi 6 mesi (freschezza).</p>
+      <p><strong>Interazione:</strong> rotella del mouse per zoom, drag per pan. Passa il mouse sulle candele per dettagli.</p>
+      <p><strong>Visualizzazione pattern:</strong> seleziona un pattern dal menu → pallini sopra le candele dove si è verificato: <span style="color:var(--accent)">verde</span> = il prezzo è salito dopo, <span style="color:var(--red)">rosso</span> = è sceso. L'istogramma sotto mostra la distribuzione dei rendimenti post-pattern.</p>
+    </div>
+    <div class="module-desc">Grafico a candele del dataset con overlay SMA, marker dei pattern e distribuzione rendimenti.</div>
+
+    <!-- Chart info box -->
+    <div class="histogram-stats" id="chartInfo" style="margin-bottom:14px;">
+      <div class="hs-item"><span class="hs-label">Caricamento…</span></div>
+    </div>
+
+    <!-- Main candlestick chart -->
+    <div class="chart-container">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">BTC/USDT — Candlestick</div>
+          <div class="chart-subtitle">Candele colorate per classificazione U/D/J · SMA(50) · Zona freschezza 6m</div>
+        </div>
+        <div class="chart-controls">
+          <button class="btn-chart" id="chartView30">30</button>
+          <button class="btn-chart" id="chartView90">90</button>
+          <button class="btn-chart active" id="chartView200">200</button>
+          <button class="btn-chart" id="chartViewAll">Tutto</button>
+        </div>
+      </div>
+      <canvas class="chart-canvas" id="mainChartCanvas"></canvas>
+      <div class="chart-tooltip" id="mainChartTooltip"></div>
+      <div class="chart-legend">
+        <div class="chart-legend-item"><div class="chart-legend-swatch bull"></div> Rialzista (U)</div>
+        <div class="chart-legend-item"><div class="chart-legend-swatch bear"></div> Ribassista (D)</div>
+        <div class="chart-legend-item"><div class="chart-legend-swatch doji"></div> Doji (J)</div>
+        <div class="chart-legend-item"><div class="chart-legend-swatch sma"></div> SMA(50)</div>
+        <div class="chart-legend-item"><div class="chart-legend-swatch recent"></div> Finestra 6m</div>
+      </div>
+    </div>
+
+    <!-- Pattern overlay controls -->
+    <div class="chart-container">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Analisi Visuale Pattern</div>
+          <div class="chart-subtitle">Seleziona un pattern per visualizzare le occorrenze storiche e la distribuzione dei rendimenti</div>
+        </div>
+      </div>
+      <div class="pattern-selector-bar">
+        <label>Pattern</label>
+        <select class="ctrl-select" id="chartPatternSelect" style="min-width:280px;"></select>
+      </div>
+      <!-- Pattern summary -->
+      <div class="histogram-stats" id="chartPatternSummary" style="margin-bottom:14px;">
+        <div class="hs-item"><span class="hs-label">Seleziona un pattern sopra</span></div>
+      </div>
+      <!-- Histogram -->
+      <div id="chartHistogram">
+        <div class="chart-loading">Seleziona un pattern per vedere la distribuzione dei rendimenti</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <strong style="color:var(--text-1)">Note Metodologiche:</strong> WR = close-to-close. Rendimento = (close[i+k] - close[i]) / close[i] × 100. Sharpe = μ/σ. SMA(50) e ATR(14) per regime. <strong>Significatività:</strong> z-test binomiale bilaterale, H₀: P(Up) = 50%. ★★★ p&lt;0.01, ★★ p&lt;0.05, ★ p&lt;0.10. Finestra freschezza: 180gg daily, 26 sett. weekly.<br>
+  <strong style="color:var(--text-1)">Dati:</strong> OHLCV BTC/USDT da Binance API (dal 17/08/2017). Cache IndexedDB (stale dopo 20h). Pulsanti ↓ per export JSON offline.<br>
+  <strong style="color:var(--red)">Disclaimer:</strong> Strumento di analisi statistica a scopo educativo. Non costituisce consulenza finanziaria. Le performance passate non garantiscono risultati futuri.
+</footer>
+
+<!-- TOUR OVERLAY -->
+<div class="tour-overlay" id="tourOverlay">
+  <div class="tour-spotlight" id="tourSpotlight"></div>
+  <div class="tour-card" id="tourCard">
+    <div class="tour-card-step" id="tourStep"></div>
+    <div class="tour-card-title" id="tourTitle"></div>
+    <div class="tour-card-body" id="tourBody"></div>
+    <div class="tour-nav">
+      <button class="tour-btn-skip" onclick="endTour()">Esci dal tour</button>
+      <div class="tour-dots" id="tourDots"></div>
+      <div style="display:flex;gap:6px;">
+        <button class="tour-btn tour-btn-secondary" id="tourPrev" onclick="tourNavigate(-1)">← Indietro</button>
+        <button class="tour-btn tour-btn-primary" id="tourNext" onclick="tourNavigate(1)">Avanti →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GLOSSARY SIDEBAR -->
+<div class="glossary-overlay" id="glossaryOverlay" onclick="closeGlossary(event)">
+  <div class="glossary-panel">
+    <button class="glossary-close" onclick="closeGlossary()">&times;</button>
+    <div class="glossary-title">📖 Glossario & Guida Rapida</div>
+    <div class="glossary-section">
+      <h3>Concetti Base</h3>
+      <dl>
+        <div class="glossary-entry"><dt>Candela</dt><dd>Rappresentazione di un periodo: apertura, chiusura, massimo, minimo.</dd></div>
+        <div class="glossary-entry"><dt>U / D / J</dt><dd><strong>U</strong> = rialzista. <strong>D</strong> = ribassista. <strong>J</strong> = doji (corpo ≤ 25% del range).</dd></div>
+        <div class="glossary-entry"><dt>Pattern</dt><dd>Serie di candele consecutive, es. "U-D-U" = rialzista, ribassista, rialzista.</dd></div>
+        <div class="glossary-entry"><dt>Streak</dt><dd>Candele nella stessa direzione. "3D" = 3 ribassiste consecutive.</dd></div>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Metriche Statistiche</h3>
+      <dl>
+        <div class="glossary-entry"><dt>Win Rate (WR)</dt><dd>% di volte il prezzo è salito dopo il pattern.</dd></div>
+        <div class="glossary-entry"><dt>Persistenza</dt><dd>WR a 2 o 3 barre dal pattern. Misura se l'effetto dura.</dd></div>
+        <div class="glossary-entry"><dt>Percentili (P10/P50/P90)</dt><dd>Scenari: peggiore tipico / mediano / migliore tipico.</dd></div>
+        <div class="glossary-entry"><dt>Sharpe Ratio</dt><dd>Rendimento/volatilità. > 0.5 buono, > 1.0 molto buono.</dd></div>
+        <div class="glossary-entry"><dt>p-value</dt><dd>Probabilità che il WR sia frutto del caso. < 0.05 = significativo.</dd></div>
+        <div class="glossary-entry"><dt>z-score</dt><dd>Distanza in deviazioni standard dal 50%. |z| > 2 = pattern reale.</dd></div>
+      </dl>
+    </div>
+    <div class="glossary-section">
+      <h3>Regime & Freschezza</h3>
+      <dl>
+        <div class="glossary-entry"><dt>Regime</dt><dd>BULL/BEAR (SMA 50) × HIGH/LOW (ATR 14).</dd></div>
+        <div class="glossary-entry"><dt>Mean Reversion</dt><dd>Tendenza a rimbalzare dopo movimenti estremi.</dd></div>
+        <div class="glossary-entry"><dt>Freshness Score</dt><dd>Confronto WR storico vs ultimi 6 mesi. Da +2 (rafforzato) a -2 (decaduto).</dd></div>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<!-- APP ENTRY POINT -->
+<script type="module" src="js/app.js"></script>
+
+</body>
+</html>
