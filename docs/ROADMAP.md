@@ -266,26 +266,132 @@ Prima di scrivere test massivi conviene estrarre eventuali funzioni ancora accop
 
 ---
 
-## Sinergia tra le tre linee
+## Linea 4 — Pattern Strutturali: Code e Livelli di Prezzo
 
-Le linee 1 e 2 sono **funzionali** (ampliano ciò che l'utente può fare). La Linea 3 è **infrastrutturale** (protegge ciò che il tool fa già). Sono ortogonali e si rinforzano a vicenda:
+### Obiettivo
+Estendere il motore di pattern oltre le sequenze direzionali U/D/J, introducendo una nuova famiglia di pattern basati sulla **geometria delle code** e sull'**allineamento di prezzo tra candele consecutive**. L'idea di fondo è che due candele adiacenti che toccano lo stesso livello di prezzo — senza "lasciare spazio" in quella direzione — codificano un'informazione strutturale che i semplici label U/D/J non catturano.
+
+### Concetto fondamentale: candele senza coda
+
+Una candela ha una **coda inferiore** se `low < min(open, close)`, ovvero se il prezzo ha toccato livelli sotto il corpo prima di tornare su. Analogamente per la coda superiore rispetto a `high`. Una candela è **senza coda inferiore** quando `low == min(open, close)` — il prezzo non è mai sceso sotto il corpo: è partito (o arrivato) esattamente dal minimo.
+
+In pratica, questa condizione è quasi mai esatta su dati reali, quindi si introduce una **soglia di tolleranza relativa**: la coda inferiore è assente se `(min(open,close) - low) / (high - low) < ε`, con ε configurabile (es. 0.02 = 2% del range della candela). Analogamente per la coda superiore.
+
+Si definiscono quindi quattro attributi aggiuntivi per ogni candela, ortogonali al label U/D/J:
+- **`noTailDown`**: coda inferiore assente (close o open coincide col low entro ε)
+- **`noTailUp`**: coda superiore assente (close o open coincide col high entro ε)
+- **`flatBottom`**: sinonimo semantico di noTailDown, usato per enfatizzare la natura di "pavimento piatto"
+- **`flatTop`**: sinonimo di noTailUp, "soffitto piatto"
+
+### Esempio chiave: D+U flat bottom condiviso
+
+Il caso prototipico che ha motivato questa linea:
+1. Candela **D** (ribassista) con `noTailDown` — chiude esattamente al suo low. Nessuna coda inferiore: il mercato è sceso e si è fermato lì, senza tentare rimbalzi.
+2. Candela **U** (rialzista) immediatamente successiva con `noTailDown` — apre esattamente allo stesso valore `low`. Il prezzo non ha mai cercato livelli inferiori: è rimbalzato secco.
+3. I due `low` sono allo stesso livello entro una soglia di prezzo assoluta (es. < 0.1% di differenza).
+
+Questa sequenza D(flat-bottom)+U(flat-bottom) co-localizzati descrive un **rimbalzo su supporto preciso**: il mercato ha toccato un livello esatto due volte consecutive senza mai scendervi sotto, e la seconda volta ha invertito. È concettualmente diverso da un semplice "D seguito da U" perché cattura la precisione geometrica del rimbalzo.
+
+Il pattern speculare sul lato superiore è U(flat-top)+D(flat-top): un rigetto su resistenza precisa.
+
+### Livelli di sviluppo
+
+#### Livello 4.1 — Estensione del classificatore candele (`engine/candles.js`)
+Aggiungere a ogni oggetto candela i campi `noTailDown`, `noTailUp` e il `tailRatio` per entrambe le direzioni:
+```js
+// tailRatioDown: quanto del range totale è sotto il corpo (0 = nessuna coda inferiore)
+tailRatioDown: (Math.min(open, close) - low) / (high - low || 1),
+tailRatioUp:   (high - Math.max(open, close)) / (high - low || 1),
+noTailDown:    tailRatioDown < TAIL_THRESHOLD,   // es. TAIL_THRESHOLD = 0.05
+noTailUp:      tailRatioUp   < TAIL_THRESHOLD,
+```
+Il parametro `TAIL_THRESHOLD` è configurabile dall'utente (slider o input numerico, default 0.05 = 5% del range). Questo permette di vedere come cambia la frequenza dei pattern al variare della soglia.
+
+#### Livello 4.2 — Scanner per pattern strutturali (`engine/patterns.js`)
+Un secondo scanner, parallelo a quello esistente per le sequenze U/D/J, che rileva pattern definiti da:
+- Label direzionale (U/D/J) su ogni candela della sequenza
+- Presenza o assenza di coda (noTailDown / noTailUp) su una o più candele
+- Allineamento di prezzo tra candele adiacenti (es. `|low[i] - low[i+1]| / low[i] < PRICE_ALIGN_THRESHOLD`)
+
+La struttura del pattern si esprime con un descrittore compatto, ad esempio:
+```
+D(ntd)+U(ntd)@low   // D senza coda inferiore + U senza coda inferiore, low allineati
+U(ntu)+D(ntu)@high  // U senza coda superiore + D senza coda superiore, high allineati
+D(ntd)+U            // D senza coda inferiore seguito da qualsiasi U (indipendente dall'allineamento)
+```
+Il motore scandisce tutto lo storico cercando occorrenze di questi descrittori e calcola — esattamente come fa per U/D/J — win rate, z-score, p-value, rendimento medio, percentili P10/P90 nelle N barre successive.
+
+#### Livello 4.3 — Catalogo automatico dei pattern strutturali
+A differenza del Modulo C (che enumera **tutte** le combinazioni U/D/J), i pattern strutturali hanno uno spazio molto più grande perché si aggiungono i flag di coda e l'allineamento di prezzo. Si adotta quindi un approccio **discovery-first**: lo scanner rileva tutte le sequenze di 2–3 candele con almeno un flag di coda attivo e le ordina per frequenza e significatività. Solo i pattern con almeno 20 occorrenze vengono mostrati. Il risultato è una tabella analoga al Modulo C, ma per la nuova famiglia.
+
+#### Livello 4.4 — Nuovo modulo UI (`modules/mod-h-structural.js`)
+Pannello dedicato "H · Pattern Strutturali" con:
+- Slider per la soglia `TAIL_THRESHOLD` (0%–10%), con aggiornamento dinamico della tabella.
+- Slider per la soglia di allineamento prezzi `PRICE_ALIGN_THRESHOLD` (0%–1%).
+- Tabella dei pattern rilevati con le stesse colonne del Modulo C: label descrittivo, n. occorrenze, WR, z-score, p-value, Sharpe, rendimento mediano.
+- Filtro per regime (BULL/BEAR × HIGH/LOW VOL), coerente con il Modulo D.
+- Integrazione con il Modulo G (grafici): clic su un pattern mostra le occorrenze storiche marcate sul candlestick chart.
+
+#### Livello 4.5 — Generalizzazione: libreria di pattern strutturali noti
+Dopo il livello discovery, si può costruire un catalogo di pattern "classici" già nominati nella letteratura tecnica, implementati con la nuova infrastruttura:
+- **Hammer / Hanging Man**: U o D con coda inferiore lunga (tailRatioDown > 0.6) e coda superiore assente.
+- **Shooting Star / Inverted Hammer**: U o D con coda superiore lunga (tailRatioUp > 0.6) e coda inferiore assente.
+- **Marubozu**: entrambe le code assenti (noTailDown AND noTailUp) — candela pura senza indecisione.
+- **Engulfing**: U che apre sotto il close della D precedente e chiude sopra il suo open (o viceversa).
+- **Tweezer Bottom**: D(ntd)+U(ntd) con low allineato (il caso prototipico della Linea 4).
+- **Tweezer Top**: U(ntu)+D(ntu) con high allineato.
+
+Ogni pattern classico viene analizzato statisticamente sullo storico BTC, producendo un report confrontabile con il Modulo C e con i pattern discovery del Livello 4.3.
+
+### Impatto sull'architettura
+
+Le modifiche sono **additive e non distruttive**:
+- `candles.js`: aggiunta dei campi `tailRatioDown`, `tailRatioUp`, `noTailDown`, `noTailUp` a ogni oggetto candela. Nessuna modifica alle classificazioni esistenti U/D/J.
+- `patterns.js`: secondo scanner affiancato a quello esistente. Nessuna modifica al primo scanner.
+- `modules/mod-h-structural.js`: nuovo file, non tocca i moduli A–G.
+- `index.html`: aggiunta di un tab/sezione per il Modulo H.
+- `css/`: eventuali stili per il nuovo pannello.
+
+### Complessità stimata
+- Livello 4.1 (classificatore + tail attributes): 1–2 ore.
+- Livello 4.2 (scanner strutturale): 3–4 ore.
+- Livello 4.3 (catalogo discovery): 2–3 ore.
+- Livello 4.4 (modulo UI mod-h): 3–4 ore.
+- Livello 4.5 (pattern classici noti): 2–3 ore.
+
+**Totale indicativo**: 11–16 ore per la linea completa. MVP utile (4.1 + 4.2 + pattern Tweezer Bottom/Top) in ~5 ore.
+
+### Limiti
+- La soglia `TAIL_THRESHOLD` è arbitraria: cambiandola cambiano le occorrenze e quindi la significatività statistica. Occorre comunicare chiaramente all'utente che ogni scelta di soglia produce uno studio diverso.
+- L'allineamento di prezzo tra due low consecutivi è sensibile alla granularità del dato (su daily 0.1% è ragionevole, su weekly potrebbe richiedere una soglia più larga).
+- I pattern a 2–3 candele con flag multipli (coda + allineamento) hanno frequenze basse per costruzione: molti avranno meno di 20 occorrenze e non risulteranno significativi. Il discovery deve gestire bene il caso "troppo pochi campioni".
+- Serve decidere se i pattern strutturali rientrano nel sistema di freschezza del Modulo F: idealmente sì, ma richiede di estendere `freshness.js`.
+
+---
+
+## Sinergia tra le linee
+
+Le linee 1 e 2 sono **funzionali** (ampliano ciò che l'utente può fare). La Linea 3 è **infrastrutturale** (protegge ciò che il tool fa già). La Linea 4 è un'**estensione del dominio analitico**: introduce una nuova famiglia di segnali che si affianca — senza sostituire — l'analisi sequenziale U/D/J. Sono ortogonali e si rinforzano a vicenda:
 
 - **Linea 2 (grafici nel tool)** = migliora la fase di **scoperta** (analisi esplorativa, capire quali pattern vale la pena approfondire).
 - **Linea 1 (PineScript)** = migliora la fase di **esecuzione** (portare i pattern validati sul campo, con alert e backtest di trading).
 - **Linea 3 (test suite)** = abilita la fase di **evoluzione** (rendere il codice modificabile senza paura, condizione necessaria per far crescere le altre due linee).
+- **Linea 4 (pattern strutturali)** = amplia il **vocabolario analitico** del tool: introduce segnali geometrici (code, allineamenti di prezzo) che le sequenze U/D/J non possono esprimere.
 
 Un workflow integrato sarebbe:
-1. Apri l'HTML → esplori i pattern con le tabelle e i grafici.
-2. Identifichi un pattern significativo e confermato (es. "DDD sul weekly, WR 72%, p<0.001").
-3. Clicchi "Esporta in PineScript" → scarichi lo script.
+1. Apri l'HTML → esplori i pattern con le tabelle e i grafici (Linea 2).
+2. Identifichi un pattern significativo e confermato (es. "DDD sul weekly, WR 72%, p<0.001" oppure "Tweezer Bottom, WR 68%, p<0.05").
+3. Clicchi "Esporta in PineScript" → scarichi lo script (Linea 1).
 4. Lo carichi su TradingView → imposti un alert → aspetti.
 
 ### Suggerimento di priorità
 Se dovessi scegliere una linea funzionale, direi **Linea 2.1 + 2.2** (grafico candele + visualizzazione pattern): trasforma la percezione del tool dal "foglio Excel avanzato" a "strumento visuale professionale", con impatto immediato sulla comprensibilità. È anche la base su cui costruire gli altri livelli grafici.
 
+La **Linea 4 (pattern strutturali)** è un candidato forte per un secondo step funzionale: il Livello 4.1 (tail attributes) è rapido da implementare e sblocca immediatamente un'analisi nuova e complementare. I pattern Tweezer Bottom/Top in particolare sono tra i più studiati nel trading tecnico — avere statistiche rigorose su BTC su di essi ha valore autonomo.
+
 La Linea 1 (PineScript) ha più valore **dopo** che l'utente ha già identificato pattern di cui si fida — quindi arriva naturalmente nella fase 2 del workflow.
 
-La **Linea 3 (test suite)** andrebbe idealmente iniziata **prima** di espandere le funzionalità: fissare ora il comportamento corretto dell'engine significa poter poi aggiungere grafici ed export PineScript con la sicurezza che i numeri di base non si muovano. Un MVP minimo (3.1 + 3.6 + 3.8) vale più di tutti gli altri livelli presi singolarmente in termini di rischio/benefit.
+La **Linea 3 (test suite)** andrebbe idealmente iniziata **prima** di espandere le funzionalità: fissare ora il comportamento corretto dell'engine significa poter poi aggiungere grafici, pattern strutturali ed export PineScript con la sicurezza che i numeri di base non si muovano. Un MVP minimo (3.1 + 3.6 + 3.8) vale più di tutti gli altri livelli presi singolarmente in termini di rischio/benefit.
 
 Le linee funzionali possono essere sviluppate in parallelo: non c'è dipendenza tecnica tra loro, e la Linea 3 non blocca nessuna delle altre, le rende solo più sicure.
 
@@ -312,5 +418,10 @@ Le linee funzionali possono essere sviluppate in parallelo: non c'è dipendenza 
 | 3.6 | Golden snapshot tests sui moduli A–F | 🔵 Da fare |
 | 3.7 | Smoke test UI (boot app + moduli) | 🔵 Da fare |
 | 3.8 | CI GitHub Actions + badge | 🔵 Da fare |
+| 4.1 | Tail attributes nel classificatore candele (candles.js) | 🔵 Da fare |
+| 4.2 | Scanner pattern strutturali (patterns.js) | 🔵 Da fare |
+| 4.3 | Catalogo discovery pattern strutturali | 🔵 Da fare |
+| 4.4 | Modulo H — UI Pattern Strutturali (mod-h-structural.js) | 🔵 Da fare |
+| 4.5 | Pattern classici noti (Tweezer, Marubozu, Hammer, ecc.) | 🔵 Da fare |
 
 Legenda: 🔵 da fare · 🟡 in corso · 🟢 completato
